@@ -3,17 +3,17 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
-  name: inputs.template.fn.crossplane.io
+    controller-gen.kubebuilder.io/version: v0.16.0
+  name: resourcegraphs.template.fn.crossplane.io
 spec:
   group: template.fn.crossplane.io
   names:
     categories:
     - crossplane
-    kind: Input
-    listKind: InputList
-    plural: inputs
-    singular: input
+    kind: ResourceGraph
+    listKind: ResourceGraphList
+    plural: resourcegraphs
+    singular: resourcegraph
   scope: Namespaced
   versions:
   - name: v1beta1
@@ -28,10 +28,6 @@ spec:
               may reject unrecognized values.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
-          example:
-            description: Example is an example field. Replace it with whatever input
-              you need. :)
-            type: string
           kind:
             description: |-
               Kind is a string value representing the REST resource this object represents.
@@ -42,8 +38,32 @@ spec:
             type: string
           metadata:
             type: object
-        required:
-        - example
+          resources:
+            description: The resources that are part of the ResourceGraph.
+            items:
+              properties:
+                id:
+                  type: string
+                includeWhen:
+                  items:
+                    type: string
+                  type: array
+                readyWhen:
+                  items:
+                    type: string
+                  type: array
+                template:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+              required:
+              - id
+              - template
+              type: object
+            type: array
+          status:
+            description: The status of the ResourceGraph.
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
         type: object
     served: true
     storage: true

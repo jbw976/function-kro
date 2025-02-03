@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 
+	"github.com/upbound/function-kro/input/v1beta1"
+
 	"github.com/crossplane/crossplane-runtime/pkg/errors"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	fnv1 "github.com/crossplane/function-sdk-go/proto/v1"
 	"github.com/crossplane/function-sdk-go/request"
 	"github.com/crossplane/function-sdk-go/response"
-	"github.com/crossplane/function-template-go/input/v1beta1"
 )
 
 // Function returns whatever response you ask it to.
@@ -24,37 +25,28 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 
 	rsp := response.To(req, response.DefaultTTL)
 
-	in := &v1beta1.Input{}
-	if err := request.GetInput(req, in); err != nil {
-		// You can set a custom status condition on the claim. This allows you to
-		// communicate with the user. See the link below for status condition
-		// guidance.
-		// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-		response.ConditionFalse(rsp, "FunctionSuccess", "InternalError").
-			WithMessage("Something went wrong.").
-			TargetCompositeAndClaim()
-
-		// You can emit an event regarding the claim. This allows you to communicate
-		// with the user. Note that events should be used sparingly and are subject
-		// to throttling; see the issue below for more information.
-		// https://github.com/crossplane/crossplane/issues/5802
-		response.Warning(rsp, errors.New("something went wrong")).
-			TargetCompositeAndClaim()
-
+	rg := &v1beta1.ResourceGraph{}
+	if err := request.GetInput(req, rg); err != nil {
 		response.Fatal(rsp, errors.Wrapf(err, "cannot get Function input from %T", req))
 		return rsp, nil
 	}
 
-	// TODO: Add your Function logic here!
-	response.Normalf(rsp, "I was run with input %q!", in.Example)
-	f.log.Info("I was run!", "input", in.Example)
-
-	// You can set a custom status condition on the claim. This allows you to
-	// communicate with the user. See the link below for status condition
-	// guidance.
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-	response.ConditionTrue(rsp, "FunctionSuccess", "Success").
-		TargetCompositeAndClaim()
+	// TODO(negz): This takes a RESTClient to make a discovery client. It uses
+	// the discovery client to load the OAPI schema for all resource kinds that
+	// appear in the template. It also generates a dummy schema.
+	//
+	// Process:
+	// 1. Create map of all namespaced GroupKinds in the cluster
+	// 2. Create map of resource (template) by id
+	//    a. Use schema resolver to get a CEL schema - https://pkg.go.dev/k8s.io/apiserver/pkg/cel/openapi/resolver#DefinitionsSchemaResolver.ResolveSchema
+	// gb, err := graph.NewBuilder(nil)
+	// if err != nil {
+	// 	//
+	// }
+	// g, err := gb.NewResourceGraphDefinition(nil) // TODO(negz): Takes RGD as input.
+	// if err != nil {
+	// 	//
+	// }
 
 	return rsp, nil
 }

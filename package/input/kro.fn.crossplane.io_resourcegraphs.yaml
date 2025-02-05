@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.0
-  name: resourcegraphs.template.fn.crossplane.io
+  name: resourcegraphs.kro.fn.crossplane.io
 spec:
-  group: template.fn.crossplane.io
+  group: kro.fn.crossplane.io
   names:
     categories:
     - crossplane

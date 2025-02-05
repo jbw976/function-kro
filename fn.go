@@ -57,7 +57,6 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 		}
 		gvks = append(gvks, schema.FromAPIVersionAndKind(u.GetAPIVersion(), u.GetKind()))
 	}
-
 	// Tell Crossplane we need the CRDs for our XR and resource templates.
 	// TODO(negz): In v2 we'll need to handle resource templates for built-in
 	// types that don't have CRDs - e.g. Deployment.
@@ -90,6 +89,10 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 		crds[i] = crd
 	}
 
+	// TODO(negz): CRDs don't contain schema for metadata, except that it exists
+	// and is an object. This means CEL won't let you use it. We need to inject
+	// the OpenAPI schema for metadata into these CRDs before we can use
+	// metadata in templates.
 	gb, err := graph.NewBuilder(crds...)
 	if err != nil {
 		response.Fatal(rsp, errors.Wrap(err, "cannot create resource graph builder"))

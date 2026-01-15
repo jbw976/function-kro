@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/json"
 
 	"github.com/crossplane/crossplane-runtime/pkg/errors"
+	"github.com/crossplane/crossplane-runtime/pkg/fieldpath"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	fnv1 "github.com/crossplane/function-sdk-go/proto/v1"
 	"github.com/crossplane/function-sdk-go/request"
@@ -148,7 +149,11 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 			continue
 		}
 
-		r, state := rt.GetResource(id)
+		// Use GetRenderedResource to get the template with CEL expressions
+		// resolved, rather than GetResource which returns observed state.
+		// This is critical for SSA - desired state must only contain fields
+		// we want to own, not provider-defaulted fields from observed state.
+		r, state := rt.GetRenderedResource(id)
 		if state != runtime.ResourceStateResolved {
 			f.log.Info("Skipping unresolved resource", "id", id, "state", state)
 			continue
@@ -176,7 +181,30 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 		return rsp, nil
 	}
 
-	if err := response.SetDesiredCompositeResource(rsp, &resource.Composite{Resource: &composite.Unstructured{Unstructured: *rt.GetInstance()}}); err != nil {
+	// Build a minimal desired XR containing only the status paths declared in
+	// the ResourceGraph. This is critical for SSA - we must only include fields
+	// we want to own. The runtime's GetInstance() returns the full observed XR
+	// with status fields mutated in-place, but including all of those fields
+	// would cause the function to claim SSA ownership of every field.
+	dxr := &composite.Unstructured{Unstructured: unstructured.Unstructured{Object: map[string]any{}}}
+	dxr.SetAPIVersion(oxr.Resource.GetAPIVersion())
+	dxr.SetKind(oxr.Resource.GetKind())
+
+	src := fieldpath.Pave(rt.GetInstance().Object)
+	dst := fieldpath.Pave(dxr.Object)
+	for _, v := range g.Instance.GetVariables() {
+		val, err := src.GetValue(v.Path)
+		if err != nil {
+			// Value not resolved yet (CEL dependency not satisfied), skip it.
+			continue
+		}
+		if err := dst.SetValue(v.Path, val); err != nil {
+			response.Fatal(rsp, errors.Wrapf(err, "cannot set desired XR status field %q", v.Path))
+			return rsp, nil
+		}
+	}
+
+	if err := response.SetDesiredCompositeResource(rsp, &resource.Composite{Resource: dxr}); err != nil {
 		response.Fatal(rsp, errors.Wrap(err, "cannot set desired composite resource"))
 		return rsp, nil
 	}

@@ -17,18 +17,16 @@ package metadata
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/validation"
-	"sigs.k8s.io/release-utils/version"
-
-	"github.com/kubernetes-sigs/kro/api/v1alpha1"
 )
 
 const (
+	// KRODomainName is the domain name for KRO resources
+	KRODomainName = "kro.run"
+
 	// LabelKROPrefix is the label key prefix used to identify KRO owned resources.
-	LabelKROPrefix = v1alpha1.KRODomainName + "/"
+	LabelKROPrefix = KRODomainName + "/"
 )
 
 const (
@@ -165,18 +163,9 @@ func NewInstanceLabeler(instanceMeta metav1.Object) GenericLabeler {
 func NewKROMetaLabeler() GenericLabeler {
 	return map[string]string{
 		OwnedLabel:        "true",
-		KROVersionLabel:   safeVersion(version.GetVersionInfo().GitVersion),
+		KROVersionLabel:   "function-kro",
 		ManagedByLabelKey: ManagedByKROValue,
 	}
-}
-
-func safeVersion(version string) string {
-	if validation.IsValidLabelValue(version) == nil {
-		return version
-	}
-	// The script we use might add '+dirty' to development branches,
-	// so let's try replacing '+' with '-'.
-	return strings.ReplaceAll(version, "+", "-")
 }
 
 func booleanFromString(s string) bool {

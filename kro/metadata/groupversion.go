@@ -20,12 +20,10 @@ import (
 
 	"github.com/gobuffalo/flect"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	"github.com/kubernetes-sigs/kro/api/v1alpha1"
 )
 
 const (
-	KROInstancesGroupSuffix = v1alpha1.KRODomainName
+	KROInstancesGroupSuffix = KRODomainName
 )
 
 // ExtractGVKFromUnstructured extracts the GroupVersionKind from an unstructured object.

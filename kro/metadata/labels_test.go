@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/release-utils/version"
 )
 
 // mockObject is a simple implementation of metav1.Object for testing
@@ -255,7 +254,7 @@ func TestNewKROMetaLabeler(t *testing.T) {
 		labeler := NewKROMetaLabeler()
 		assert.Equal(t, GenericLabeler{
 			OwnedLabel:        "true",
-			KROVersionLabel:   version.GetVersionInfo().GitVersion,
+			KROVersionLabel:   "function-kro",
 			ManagedByLabelKey: ManagedByKROValue,
 		}, labeler)
 	})

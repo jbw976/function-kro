@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	fnv1 "github.com/crossplane/function-sdk-go/proto/v1"
 	"github.com/crossplane/function-sdk-go/resource"
 	"github.com/crossplane/function-sdk-go/response"
@@ -43,6 +43,7 @@ func TestRunFunction(t *testing.T) {
 							"template": {
 								"apiVersion": "s3.aws.upbound.io/v1beta1",
 								"kind": "Bucket",
+								"metadata": {},
 								"spec": {
 									"forProvider": {
 										"region": "us-west-2"
@@ -70,7 +71,17 @@ func TestRunFunction(t *testing.T) {
 				rsp: &fnv1.RunFunctionResponse{
 					Meta: &fnv1.ResponseMeta{Tag: "test", Ttl: durationpb.New(response.DefaultTTL)},
 					Requirements: &fnv1.Requirements{
-						ExtraResources: map[string]*fnv1.ResourceSelector{
+						Schemas: map[string]*fnv1.SchemaSelector{
+							"example.crossplane.io/v1, Kind=XBucket": {
+								ApiVersion: "example.crossplane.io/v1",
+								Kind:       "XBucket",
+							},
+							"s3.aws.upbound.io/v1beta1, Kind=Bucket": {
+								ApiVersion: "s3.aws.upbound.io/v1beta1",
+								Kind:       "Bucket",
+							},
+						},
+						Resources: map[string]*fnv1.ResourceSelector{
 							"example.crossplane.io/v1, Kind=XBucket": {
 								ApiVersion: "apiextensions.k8s.io/v1",
 								Kind:       "CustomResourceDefinition",
@@ -99,6 +110,7 @@ func TestRunFunction(t *testing.T) {
 							"template": {
 								"apiVersion": "s3.aws.upbound.io/v1beta1",
 								"kind": "Bucket",
+								"metadata": {},
 								"spec": {
 									"forProvider": {
 										"region": "us-west-2"
@@ -228,7 +240,17 @@ func TestRunFunction(t *testing.T) {
 				rsp: &fnv1.RunFunctionResponse{
 					Meta: &fnv1.ResponseMeta{Tag: "test", Ttl: durationpb.New(response.DefaultTTL)},
 					Requirements: &fnv1.Requirements{
-						ExtraResources: map[string]*fnv1.ResourceSelector{
+						Schemas: map[string]*fnv1.SchemaSelector{
+							"example.crossplane.io/v1, Kind=XBucket": {
+								ApiVersion: "example.crossplane.io/v1",
+								Kind:       "XBucket",
+							},
+							"s3.aws.upbound.io/v1beta1, Kind=Bucket": {
+								ApiVersion: "s3.aws.upbound.io/v1beta1",
+								Kind:       "Bucket",
+							},
+						},
+						Resources: map[string]*fnv1.ResourceSelector{
 							"example.crossplane.io/v1, Kind=XBucket": {
 								ApiVersion: "apiextensions.k8s.io/v1",
 								Kind:       "CustomResourceDefinition",
@@ -253,6 +275,7 @@ func TestRunFunction(t *testing.T) {
 								Resource: resource.MustStructJSON(`{
 									"apiVersion": "s3.aws.upbound.io/v1beta1",
 									"kind": "Bucket",
+									"metadata": {},
 									"spec": {
 										"forProvider": {
 											"region": "us-west-2"
@@ -279,6 +302,7 @@ func TestRunFunction(t *testing.T) {
 							"template": {
 								"apiVersion": "s3.aws.upbound.io/v1beta1",
 								"kind": "Bucket",
+								"metadata": {},
 								"spec": {
 									"forProvider": {
 										"region": "us-west-2"
@@ -423,7 +447,17 @@ func TestRunFunction(t *testing.T) {
 				rsp: &fnv1.RunFunctionResponse{
 					Meta: &fnv1.ResponseMeta{Tag: "test", Ttl: durationpb.New(response.DefaultTTL)},
 					Requirements: &fnv1.Requirements{
-						ExtraResources: map[string]*fnv1.ResourceSelector{
+						Schemas: map[string]*fnv1.SchemaSelector{
+							"example.crossplane.io/v1, Kind=XBucket": {
+								ApiVersion: "example.crossplane.io/v1",
+								Kind:       "XBucket",
+							},
+							"s3.aws.upbound.io/v1beta1, Kind=Bucket": {
+								ApiVersion: "s3.aws.upbound.io/v1beta1",
+								Kind:       "Bucket",
+							},
+						},
+						Resources: map[string]*fnv1.ResourceSelector{
 							"example.crossplane.io/v1, Kind=XBucket": {
 								ApiVersion: "apiextensions.k8s.io/v1",
 								Kind:       "CustomResourceDefinition",
@@ -453,6 +487,7 @@ func TestRunFunction(t *testing.T) {
 								Resource: resource.MustStructJSON(`{
 									"apiVersion": "s3.aws.upbound.io/v1beta1",
 									"kind": "Bucket",
+									"metadata": {},
 									"spec": {
 										"forProvider": {
 											"region": "us-west-2"

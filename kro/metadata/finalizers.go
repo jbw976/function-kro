@@ -20,11 +20,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-
-	"github.com/kubernetes-sigs/kro/api/v1alpha1"
 )
 
-const kroFinalizer = v1alpha1.KRODomainName + "/finalizer"
+const kroFinalizer = KRODomainName + "/finalizer"
 
 // SetResourceGraphDefinitionFinalizer adds the kro finalizer to the object if it's not already present.
 func SetResourceGraphDefinitionFinalizer(obj metav1.Object) {

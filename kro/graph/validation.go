@@ -20,7 +20,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	"github.com/kubernetes-sigs/kro/api/v1alpha1"
+	"github.com/upbound/function-kro/input/v1beta1"
 )
 
 var (
@@ -86,7 +86,7 @@ var (
 	reservedKeyWords = kroReservedKeyWords.Union(celReservedSymbols)
 )
 
-// isValidResourceID checks if the given id is a valid KRO resource id (loawercase)
+// isValidResourceID checks if the given id is a valid KRO resource id (lowercase)
 func isValidResourceID(id string) bool {
 	return lowerCamelCaseRegex.MatchString(id)
 }
@@ -101,20 +101,7 @@ func isKROReservedWord(word string) bool {
 	return reservedKeyWords.Has(word)
 }
 
-// validateResourceGraphDefinitionNamingConventions validates the naming conventions of
-// the given resource graph definition.
-func validateResourceGraphDefinitionNamingConventions(rgd *v1alpha1.ResourceGraphDefinition) error {
-	if !isValidKindName(rgd.Spec.Schema.Kind) {
-		return fmt.Errorf("%s: kind '%s' is not a valid KRO kind name: must be UpperCamelCase", ErrNamingConvention, rgd.Spec.Schema.Kind)
-	}
-	err := validateResourceIDs(rgd)
-	if err != nil {
-		return fmt.Errorf("%s: %w", ErrNamingConvention, err)
-	}
-	return nil
-}
-
-// validateResource performs basic validation on a given resourcegraphdefinition.
+// validateResourceIDs validates the resource IDs in a ResourceGraph.
 // It checks that there are no duplicate resource ids and that the
 // resource ids are conformant to the KRO naming convention.
 //
@@ -122,9 +109,9 @@ func validateResourceGraphDefinitionNamingConventions(rgd *v1alpha1.ResourceGrap
 // - The id should start with a lowercase letter.
 // - The id should only contain alphanumeric characters.
 // - Does not contain any special characters, underscores, or hyphens.
-func validateResourceIDs(rgd *v1alpha1.ResourceGraphDefinition) error {
+func validateResourceIDs(rg *v1beta1.ResourceGraph) error {
 	seen := make(map[string]struct{})
-	for _, res := range rgd.Spec.Resources {
+	for _, res := range rg.Resources {
 		if isKROReservedWord(res.ID) {
 			return fmt.Errorf("id %s is a reserved keyword in KRO", res.ID)
 		}

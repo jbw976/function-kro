@@ -17,57 +17,49 @@ package graph
 import (
 	"testing"
 
-	"github.com/kubernetes-sigs/kro/api/v1alpha1"
+	"github.com/upbound/function-kro/input/v1beta1"
 )
 
 func TestValidateRGResourceNames(t *testing.T) {
 	tests := []struct {
 		name        string
-		rgd         *v1alpha1.ResourceGraphDefinition
+		rg          *v1beta1.ResourceGraph
 		expectError bool
 	}{
 		{
 			name: "Valid resource graph definition resource ids",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "validID1"},
-						{ID: "validID2"},
-					},
+			rg: &v1beta1.ResourceGraph{
+				Resources: []*v1beta1.Resource{
+					{ID: "validID1"},
+					{ID: "validID2"},
 				},
 			},
 			expectError: false,
 		},
 		{
 			name: "Duplicate resource ids",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "duplicateID"},
-						{ID: "duplicateID"},
-					},
+			rg: &v1beta1.ResourceGraph{
+				Resources: []*v1beta1.Resource{
+					{ID: "duplicateID"},
+					{ID: "duplicateID"},
 				},
 			},
 			expectError: true,
 		},
 		{
 			name: "Invalid resource ID",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "Invalid_ID"},
-					},
+			rg: &v1beta1.ResourceGraph{
+				Resources: []*v1beta1.Resource{
+					{ID: "Invalid_ID"},
 				},
 			},
 			expectError: true,
 		},
 		{
 			name: "Reserved word as resource id",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "spec"},
-					},
+			rg: &v1beta1.ResourceGraph{
+				Resources: []*v1beta1.Resource{
+					{ID: "spec"},
 				},
 			},
 			expectError: true,
@@ -76,7 +68,7 @@ func TestValidateRGResourceNames(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateResourceIDs(tt.rgd)
+			err := validateResourceIDs(tt.rg)
 			if (err != nil) != tt.expectError {
 				t.Errorf("validateRGResourceIDs() error = %v, expectError %v", err, tt.expectError)
 			}
@@ -247,52 +239,6 @@ func TestValidateKubernetesVersion(t *testing.T) {
 			}
 			if !tt.shouldPass && err == nil {
 				t.Errorf("Expected version %q to be invalid, but it passed validation", tt.version)
-			}
-		})
-	}
-}
-
-func TestValidateResourceGraphDefinitionNamingConventions(t *testing.T) {
-	tests := []struct {
-		name       string
-		resourceID string
-		kind       string
-		wantErr    bool
-	}{
-		{
-			name:       "Valid naming conventions",
-			resourceID: "validResourceID",
-			kind:       "ValidKindName",
-			wantErr:    false,
-		},
-		{
-			name:       "Invalid kind name",
-			resourceID: "validResourceID",
-			kind:       "invalidKindName",
-			wantErr:    true,
-		},
-		{
-			name:       "Invalid resource ID",
-			resourceID: "invalid_ResourceID",
-			kind:       "ValidKindName",
-			wantErr:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rgd := &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: tt.resourceID},
-					},
-					Schema: &v1alpha1.Schema{
-						Kind: tt.kind,
-					},
-				},
-			}
-			if err := validateResourceGraphDefinitionNamingConventions(rgd); (err != nil) != tt.wantErr {
-				t.Errorf("validateResourceGraphDefinitionNamingConventions() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

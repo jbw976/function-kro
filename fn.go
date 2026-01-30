@@ -72,7 +72,7 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 
 	// Request BOTH schemas (new path) AND CRDs (fallback path).
 	// This allows the function to work with both newer Crossplane versions
-	// that support required_schemas and older versions that only support extra_resources.
+	// that support required_schemas and older versions that only support required_resources.
 	rsp.Requirements = &fnv1.Requirements{
 		Schemas:   RequiredSchemas(gvks...).Schemas,
 		Resources: RequiredCRDs(gvks...).Resources,
@@ -280,19 +280,19 @@ func (f *Function) trySchemaPath(req *fnv1.RunFunctionRequest, gvks []schema.Gro
 // Returns (resolver, xrSchema, nil) on success.
 // Returns (nil, nil, error) on fatal errors.
 func (f *Function) tryCRDPath(req *fnv1.RunFunctionRequest, gvks []schema.GroupVersionKind, xrGVK schema.GroupVersionKind) (resolver.SchemaResolver, *spec.Schema, error) {
-	extraResources := req.GetExtraResources()
-	if len(extraResources) == 0 {
+	requiredResources := req.GetRequiredResources()
+	if len(requiredResources) == 0 {
 		// Crossplane hasn't sent any CRDs yet.
 		return nil, nil, nil
 	}
 
 	crds := make([]*extv1.CustomResourceDefinition, 0, len(gvks))
 	for _, gvk := range gvks {
-		e, ok := extraResources[gvk.String()]
+		e, ok := requiredResources[gvk.String()]
 		if !ok {
 			// This GVK wasn't in the response - Crossplane might not have
 			// processed our requirements yet.
-			f.log.Debug("CRD not in extra_resources response", "gvk", gvk.String())
+			f.log.Debug("CRD not in required_resources response", "gvk", gvk.String())
 			return nil, nil, nil
 		}
 
@@ -331,7 +331,7 @@ func (f *Function) tryCRDPath(req *fnv1.RunFunctionRequest, gvks []schema.GroupV
 		return nil, nil, errors.Errorf("schema for XR %q not found", xrGVK)
 	}
 
-	f.log.Debug("Using extra_resources CRD path")
+	f.log.Debug("Using required_resources CRD path")
 	return combinedResolver, xrSchema, nil
 }
 
@@ -350,7 +350,7 @@ func RequiredSchemas(gvks ...schema.GroupVersionKind) *fnv1.Requirements {
 	return rq
 }
 
-// RequiredCRDs returns the extra CRDs this function requires to run.
+// RequiredCRDs returns the required CRDs this function requires to run.
 // This is the fallback path for older Crossplane versions that don't support required_schemas.
 func RequiredCRDs(gvks ...schema.GroupVersionKind) *fnv1.Requirements {
 	rq := &fnv1.Requirements{Resources: map[string]*fnv1.ResourceSelector{}}

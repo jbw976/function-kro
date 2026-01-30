@@ -140,7 +140,7 @@ func TestRunFunction(t *testing.T) {
 							}`),
 						},
 					},
-					ExtraResources: map[string]*fnv1.Resources{
+					RequiredResources: map[string]*fnv1.Resources{
 						"example.crossplane.io/v1, Kind=XBucket": {
 							Items: []*fnv1.Resource{{
 								Resource: resource.MustStructJSON(`{
@@ -346,7 +346,7 @@ func TestRunFunction(t *testing.T) {
 							},
 						},
 					},
-					ExtraResources: map[string]*fnv1.Resources{
+					RequiredResources: map[string]*fnv1.Resources{
 						"example.crossplane.io/v1, Kind=XBucket": {
 							Items: []*fnv1.Resource{{
 								Resource: resource.MustStructJSON(`{

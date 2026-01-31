@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/upbound/function-kro/input/v1beta1"
@@ -127,21 +128,35 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 		nodesByID[node.Spec.Meta.ID] = node
 	}
 
-	// Set observed state on each node from observed composed resources.
+	// Group observed composed resources by their node ID.
 	// For single resources, the composed resource name equals the node ID.
-	// For collections, multiple resources map to the same node ID (handled later).
-	ready := make(map[string]bool)
+	// For collections, names follow the pattern "nodeID-N" (e.g., "subnets-0").
+	observedByNodeID := make(map[string][]*unstructured.Unstructured)
 	for name, r := range ocds {
 		id := string(name)
-		node, ok := nodesByID[id]
-		if !ok {
-			// This resource doesn't match any node - might be from a different function
-			// or a stale resource. Skip it.
-			f.log.Debug("Observed resource has no matching node", "name", name)
+		// Try direct match first (single resources).
+		if _, ok := nodesByID[id]; ok {
+			observedByNodeID[id] = append(observedByNodeID[id], &r.Resource.Unstructured)
 			continue
 		}
+		// Try extracting collection node ID by stripping "-N" suffix.
+		if idx := strings.LastIndex(id, "-"); idx > 0 {
+			baseID := id[:idx]
+			if node, ok := nodesByID[baseID]; ok && node.Spec.Meta.Type == graph.NodeTypeCollection {
+				observedByNodeID[baseID] = append(observedByNodeID[baseID], &r.Resource.Unstructured)
+				continue
+			}
+		}
+		// This resource doesn't match any node - might be from a different function
+		// or a stale resource. Skip it.
+		f.log.Debug("Observed resource has no matching node", "name", name)
+	}
 
-		node.SetObserved([]*unstructured.Unstructured{&r.Resource.Unstructured})
+	// Set observed state on each node and check readiness.
+	ready := make(map[string]bool)
+	for id, observed := range observedByNodeID {
+		node := nodesByID[id]
+		node.SetObserved(observed)
 
 		isReady, err := node.IsReady()
 		if err != nil {
@@ -192,11 +207,12 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 
 		// For single resources, desired has one element.
 		// For collections, desired has multiple elements (one per forEach expansion).
+		isCollection := node.Spec.Meta.Type == graph.NodeTypeCollection
 		for i, r := range desired {
 			resourceName := id
-			if len(desired) > 1 {
+			if isCollection {
 				// Collection: append index to make unique resource names
-				resourceName = id + "-" + string(rune('0'+i))
+				resourceName = id + "-" + strconv.Itoa(i)
 			}
 
 			cd, err := composed.From(r)

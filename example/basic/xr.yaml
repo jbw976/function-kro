@@ -4,3 +4,4 @@ metadata:
   name: example-stack
 spec:
   name: cool-network
+  region: us-west-2

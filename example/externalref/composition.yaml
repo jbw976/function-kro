@@ -1,0 +1,75 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: networkingstack-externalref
+spec:
+  compositeTypeRef:
+    apiVersion: externalref.example.crossplane.io/v1
+    kind: NetworkingStack
+  mode: Pipeline
+  pipeline:
+  - step: kro-run
+    functionRef:
+      name: function-kro
+    input:
+      apiVersion: kro.fn.crossplane.io/v1beta1
+      kind: ResourceGraph
+      status:
+        networkingInfo:
+          vpcID: ${vpc.status.atProvider.id}
+          subnetID: ${subnet.status.atProvider.id}
+          securityGroupID: ${securityGroup.status.atProvider.id}
+        platformConfig:
+          region: ${platformConfig.data.region}
+          environment: ${platformConfig.data.environment}
+      resources:
+      # External reference to an existing ConfigMap containing platform configuration.
+      # This ConfigMap is NOT created by function-kro - it must already exist.
+      # Its data is available via ${platformConfig.data.*} expressions.
+      - id: platformConfig
+        externalRef:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: ${schema.spec.configMapName}
+      # VPC using region from the external ConfigMap
+      - id: vpc
+        template:
+          apiVersion: ec2.aws.m.upbound.io/v1beta1
+          kind: VPC
+          metadata: {}
+          spec:
+            forProvider:
+              region: ${platformConfig.data.region}
+              cidrBlock: ${platformConfig.data.vpcCidr}
+              enableDnsHostnames: false
+              enableDnsSupport: true
+              tags:
+                environment: ${platformConfig.data.environment}
+      # Subnet using region from the external ConfigMap
+      - id: subnet
+        template:
+          apiVersion: ec2.aws.m.upbound.io/v1beta1
+          kind: Subnet
+          metadata: {}
+          spec:
+            forProvider:
+              region: ${platformConfig.data.region}
+              cidrBlock: 192.168.0.0/18
+              vpcId: ${vpc.status.atProvider.id}
+              tags:
+                environment: ${platformConfig.data.environment}
+      # Security group using region from the external ConfigMap
+      - id: securityGroup
+        template:
+          apiVersion: ec2.aws.m.upbound.io/v1beta1
+          kind: SecurityGroup
+          metadata: {}
+          spec:
+            forProvider:
+              name: my-sg-${schema.metadata.name}
+              region: ${platformConfig.data.region}
+              description: ${"Security group for " + schema.metadata.name + " (" + platformConfig.data.environment + ")"}
+              vpcId: ${vpc.status.atProvider.id}
+              tags:
+                environment: ${platformConfig.data.environment}

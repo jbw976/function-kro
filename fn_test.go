@@ -8,6 +8,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"k8s.io/utils/ptr"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	fnv1 "github.com/crossplane/function-sdk-go/proto/v1"
@@ -495,6 +496,387 @@ func TestRunFunction(t *testing.T) {
 									}
 								}`),
 								Ready: fnv1.Ready_READY_TRUE, // Ready because observed resource exists with status
+							},
+						},
+					},
+				},
+			},
+		},
+		"ExternalRefUsedInTemplate": {
+			reason: "External refs should be fetched and their data available in CEL expressions, but not included in desired output",
+			args: args{
+				req: &fnv1.RunFunctionRequest{
+					Meta: &fnv1.RequestMeta{Tag: "test"},
+					Input: resource.MustStructJSON(`{
+						"apiVersion": "kro.fn.crossplane.io/v1beta1",
+						"kind": "ResourceGraph",
+						"resources": [{
+							"id": "config",
+							"externalRef": {
+								"apiVersion": "v1",
+								"kind": "ConfigMap",
+								"metadata": {
+									"name": "platform-config"
+								}
+							}
+						}, {
+							"id": "bucket",
+							"template": {
+								"apiVersion": "s3.aws.upbound.io/v1beta1",
+								"kind": "Bucket",
+								"metadata": {},
+								"spec": {
+									"forProvider": {
+										"region": "${config.data.region}"
+									}
+								}
+							}
+						}],
+						"status": {
+							"region": "${config.data.region}"
+						}
+					}`),
+					Observed: &fnv1.State{
+						Composite: &fnv1.Resource{
+							Resource: resource.MustStructJSON(`{
+								"apiVersion": "example.crossplane.io/v1",
+								"kind": "XBucket",
+								"metadata": {"name": "test-bucket", "namespace": "xr-ns"},
+								"spec": {}
+							}`),
+						},
+					},
+					RequiredSchemas: map[string]*fnv1.Schema{
+						"example.crossplane.io/v1, Kind=XBucket": {
+							OpenapiV3: resource.MustStructJSON(`{
+								"type": "object",
+								"properties": {
+									"apiVersion": {"type": "string"},
+									"kind": {"type": "string"},
+									"metadata": {"type": "object"},
+									"spec": {"type": "object"},
+									"status": {
+										"type": "object",
+										"properties": {
+											"region": {"type": "string"}
+										}
+									}
+								}
+							}`),
+						},
+						"s3.aws.upbound.io/v1beta1, Kind=Bucket": {
+							OpenapiV3: resource.MustStructJSON(`{
+								"type": "object",
+								"properties": {
+									"apiVersion": {"type": "string"},
+									"kind": {"type": "string"},
+									"metadata": {"type": "object"},
+									"spec": {
+										"type": "object",
+										"properties": {
+											"forProvider": {
+												"type": "object",
+												"properties": {
+													"region": {"type": "string"}
+												}
+											}
+										}
+									}
+								}
+							}`),
+						},
+						"/v1, Kind=ConfigMap": {
+							OpenapiV3: resource.MustStructJSON(`{
+								"type": "object",
+								"properties": {
+									"apiVersion": {"type": "string"},
+									"kind": {"type": "string"},
+									"metadata": {"type": "object"},
+									"data": {
+										"type": "object",
+										"additionalProperties": {"type": "string"}
+									}
+								}
+							}`),
+						},
+					},
+					RequiredResources: map[string]*fnv1.Resources{
+						"config": {
+							Items: []*fnv1.Resource{{
+								Resource: resource.MustStructJSON(`{
+									"apiVersion": "v1",
+									"kind": "ConfigMap",
+									"metadata": {"name": "platform-config", "namespace": "xr-ns"},
+									"data": {
+										"region": "cool-region-2",
+										"environment": "production"
+									}
+								}`),
+							}},
+						},
+					},
+				},
+			},
+			want: want{
+				rsp: &fnv1.RunFunctionResponse{
+					Meta: &fnv1.ResponseMeta{Tag: "test", Ttl: durationpb.New(response.DefaultTTL)},
+					Requirements: &fnv1.Requirements{
+						Schemas: map[string]*fnv1.SchemaSelector{
+							"example.crossplane.io/v1, Kind=XBucket": {
+								ApiVersion: "example.crossplane.io/v1",
+								Kind:       "XBucket",
+							},
+							"s3.aws.upbound.io/v1beta1, Kind=Bucket": {
+								ApiVersion: "s3.aws.upbound.io/v1beta1",
+								Kind:       "Bucket",
+							},
+							"/v1, Kind=ConfigMap": {
+								ApiVersion: "v1",
+								Kind:       "ConfigMap",
+							},
+						},
+						Resources: map[string]*fnv1.ResourceSelector{
+							"example.crossplane.io/v1, Kind=XBucket": {
+								ApiVersion: "apiextensions.k8s.io/v1",
+								Kind:       "CustomResourceDefinition",
+								Match:      &fnv1.ResourceSelector_MatchName{MatchName: "xbuckets.example.crossplane.io"},
+							},
+							"s3.aws.upbound.io/v1beta1, Kind=Bucket": {
+								ApiVersion: "apiextensions.k8s.io/v1",
+								Kind:       "CustomResourceDefinition",
+								Match:      &fnv1.ResourceSelector_MatchName{MatchName: "buckets.s3.aws.upbound.io"},
+							},
+							"/v1, Kind=ConfigMap": {
+								ApiVersion: "apiextensions.k8s.io/v1",
+								Kind:       "CustomResourceDefinition",
+								Match:      &fnv1.ResourceSelector_MatchName{MatchName: "configmaps."},
+							},
+							"config": {
+								ApiVersion: "v1",
+								Kind:       "ConfigMap",
+								Match:      &fnv1.ResourceSelector_MatchName{MatchName: "platform-config"},
+								Namespace:  ptr.To("xr-ns"),
+							},
+						},
+					},
+					Desired: &fnv1.State{
+						Composite: &fnv1.Resource{
+							Resource: resource.MustStructJSON(`{
+								"apiVersion": "example.crossplane.io/v1",
+								"kind": "XBucket",
+								"status": {
+									"region": "cool-region-2"
+								}
+							}`),
+						},
+						Resources: map[string]*fnv1.Resource{
+							"bucket": {
+								Resource: resource.MustStructJSON(`{
+									"apiVersion": "s3.aws.upbound.io/v1beta1",
+									"kind": "Bucket",
+									"metadata": {"namespace": "xr-ns"},
+									"spec": {
+										"forProvider": {
+											"region": "cool-region-2"
+										}
+									}
+								}`),
+								Ready: fnv1.Ready_READY_FALSE,
+							},
+						},
+					},
+				},
+			},
+		},
+		"ExternalRefWithCELExpressionInName": {
+			reason: "External refs should support CEL expressions that reference schema.spec fields",
+			args: args{
+				req: &fnv1.RunFunctionRequest{
+					Meta: &fnv1.RequestMeta{Tag: "test"},
+					Input: resource.MustStructJSON(`{
+						"apiVersion": "kro.fn.crossplane.io/v1beta1",
+						"kind": "ResourceGraph",
+						"resources": [{
+							"id": "config",
+							"externalRef": {
+								"apiVersion": "v1",
+								"kind": "ConfigMap",
+								"metadata": {
+									"name": "${schema.spec.configMapName}"
+								}
+							}
+						}, {
+							"id": "bucket",
+							"template": {
+								"apiVersion": "s3.aws.upbound.io/v1beta1",
+								"kind": "Bucket",
+								"metadata": {},
+								"spec": {
+									"forProvider": {
+										"region": "${config.data.region}"
+									}
+								}
+							}
+						}],
+						"status": {
+							"region": "${config.data.region}"
+						}
+					}`),
+					Observed: &fnv1.State{
+						Composite: &fnv1.Resource{
+							Resource: resource.MustStructJSON(`{
+								"apiVersion": "example.crossplane.io/v1",
+								"kind": "XBucket",
+								"metadata": {"name": "test-bucket", "namespace": "xr-ns"},
+								"spec": {
+									"configMapName": "my-platform-config"
+								}
+							}`),
+						},
+					},
+					RequiredSchemas: map[string]*fnv1.Schema{
+						"example.crossplane.io/v1, Kind=XBucket": {
+							OpenapiV3: resource.MustStructJSON(`{
+								"type": "object",
+								"properties": {
+									"apiVersion": {"type": "string"},
+									"kind": {"type": "string"},
+									"metadata": {"type": "object"},
+									"spec": {
+										"type": "object",
+										"properties": {
+											"configMapName": {"type": "string"}
+										}
+									},
+									"status": {
+										"type": "object",
+										"properties": {
+											"region": {"type": "string"}
+										}
+									}
+								}
+							}`),
+						},
+						"s3.aws.upbound.io/v1beta1, Kind=Bucket": {
+							OpenapiV3: resource.MustStructJSON(`{
+								"type": "object",
+								"properties": {
+									"apiVersion": {"type": "string"},
+									"kind": {"type": "string"},
+									"metadata": {"type": "object"},
+									"spec": {
+										"type": "object",
+										"properties": {
+											"forProvider": {
+												"type": "object",
+												"properties": {
+													"region": {"type": "string"}
+												}
+											}
+										}
+									}
+								}
+							}`),
+						},
+						"/v1, Kind=ConfigMap": {
+							OpenapiV3: resource.MustStructJSON(`{
+								"type": "object",
+								"properties": {
+									"apiVersion": {"type": "string"},
+									"kind": {"type": "string"},
+									"metadata": {"type": "object"},
+									"data": {
+										"type": "object",
+										"additionalProperties": {"type": "string"}
+									}
+								}
+							}`),
+						},
+					},
+					RequiredResources: map[string]*fnv1.Resources{
+						"config": {
+							Items: []*fnv1.Resource{{
+								Resource: resource.MustStructJSON(`{
+									"apiVersion": "v1",
+									"kind": "ConfigMap",
+									"metadata": {"name": "my-platform-config", "namespace": "xr-ns"},
+									"data": {
+										"region": "us-west-2",
+										"environment": "production"
+									}
+								}`),
+							}},
+						},
+					},
+				},
+			},
+			want: want{
+				rsp: &fnv1.RunFunctionResponse{
+					Meta: &fnv1.ResponseMeta{Tag: "test", Ttl: durationpb.New(response.DefaultTTL)},
+					Requirements: &fnv1.Requirements{
+						Schemas: map[string]*fnv1.SchemaSelector{
+							"example.crossplane.io/v1, Kind=XBucket": {
+								ApiVersion: "example.crossplane.io/v1",
+								Kind:       "XBucket",
+							},
+							"s3.aws.upbound.io/v1beta1, Kind=Bucket": {
+								ApiVersion: "s3.aws.upbound.io/v1beta1",
+								Kind:       "Bucket",
+							},
+							"/v1, Kind=ConfigMap": {
+								ApiVersion: "v1",
+								Kind:       "ConfigMap",
+							},
+						},
+						Resources: map[string]*fnv1.ResourceSelector{
+							"example.crossplane.io/v1, Kind=XBucket": {
+								ApiVersion: "apiextensions.k8s.io/v1",
+								Kind:       "CustomResourceDefinition",
+								Match:      &fnv1.ResourceSelector_MatchName{MatchName: "xbuckets.example.crossplane.io"},
+							},
+							"s3.aws.upbound.io/v1beta1, Kind=Bucket": {
+								ApiVersion: "apiextensions.k8s.io/v1",
+								Kind:       "CustomResourceDefinition",
+								Match:      &fnv1.ResourceSelector_MatchName{MatchName: "buckets.s3.aws.upbound.io"},
+							},
+							"/v1, Kind=ConfigMap": {
+								ApiVersion: "apiextensions.k8s.io/v1",
+								Kind:       "CustomResourceDefinition",
+								Match:      &fnv1.ResourceSelector_MatchName{MatchName: "configmaps."},
+							},
+							// Key assertion: the external ref name should be evaluated from CEL expression
+							// "${schema.spec.configMapName}" -> "my-platform-config"
+							"config": {
+								ApiVersion: "v1",
+								Kind:       "ConfigMap",
+								Match:      &fnv1.ResourceSelector_MatchName{MatchName: "my-platform-config"},
+								Namespace:  ptr.To("xr-ns"),
+							},
+						},
+					},
+					Desired: &fnv1.State{
+						Composite: &fnv1.Resource{
+							Resource: resource.MustStructJSON(`{
+								"apiVersion": "example.crossplane.io/v1",
+								"kind": "XBucket",
+								"status": {
+									"region": "us-west-2"
+								}
+							}`),
+						},
+						Resources: map[string]*fnv1.Resource{
+							"bucket": {
+								Resource: resource.MustStructJSON(`{
+									"apiVersion": "s3.aws.upbound.io/v1beta1",
+									"kind": "Bucket",
+									"metadata": {"namespace": "xr-ns"},
+									"spec": {
+										"forProvider": {
+											"region": "us-west-2"
+										}
+									}
+								}`),
+								Ready: fnv1.Ready_READY_FALSE,
 							},
 						},
 					},

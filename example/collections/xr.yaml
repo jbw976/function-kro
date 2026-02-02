@@ -3,7 +3,6 @@ kind: NetworkingStack
 metadata:
   name: cool-network
 spec:
-  name: cool-network
   region: us-west-2
   availabilityZones:
     - suffix: a

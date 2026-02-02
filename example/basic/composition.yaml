@@ -73,7 +73,7 @@ spec:
           metadata: {}
           spec:
             forProvider:
-              name: my-sg-${schema.spec.name}
+              name: my-sg-${schema.metadata.name}
               region: ${schema.spec.region}
               description: something something
               vpcId: ${vpc.status.atProvider.id}

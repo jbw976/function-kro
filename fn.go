@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"maps"
 	"strconv"
 	"strings"
 
@@ -37,16 +38,18 @@ type Function struct {
 
 // RunFunction runs the Function.
 func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) (*fnv1.RunFunctionResponse, error) {
-	f.log.Info("Running function", "tag", req.GetMeta().GetTag())
+	f.log.Debug("Running function", "tag", req.GetMeta().GetTag())
 
 	rsp := response.To(req, response.DefaultTTL)
 
+	// Get the input resource graph
 	rg := &v1beta1.ResourceGraph{}
 	if err := request.GetInput(req, rg); err != nil {
 		response.Fatal(rsp, errors.Wrapf(err, "cannot get Function input from %T", req))
 		return rsp, nil
 	}
 
+	// get the observed XR
 	oxr, err := request.GetObservedCompositeResource(req)
 	if err != nil {
 		response.Fatal(rsp, errors.Wrap(err, "cannot get observed composite resource"))
@@ -58,11 +61,13 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 	xrGVK := schema.FromAPIVersionAndKind(oxr.Resource.GetAPIVersion(), oxr.Resource.GetKind())
 	gvks = append(gvks, xrGVK)
 	for _, r := range rg.Resources {
-		// Skip ExternalRef resources - they reference existing resources, not templates
 		if r.ExternalRef != nil {
+			// this is an external ref, we have access to the GVK directly
 			gvks = append(gvks, schema.FromAPIVersionAndKind(r.ExternalRef.APIVersion, r.ExternalRef.Kind))
 			continue
 		}
+
+		// it's a template, unmarshal it into an unstructured so we can access the GVK from that
 		u := &unstructured.Unstructured{}
 		if err := json.Unmarshal(r.Template.Raw, u); err != nil {
 			response.Fatal(rsp, errors.Wrapf(err, "cannot unmarshal resource id %q", r.ID))
@@ -116,16 +121,56 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 		return rsp, nil
 	}
 
-	ocds, err := request.GetObservedComposedResources(req)
-	if err != nil {
-		response.Fatal(rsp, errors.Wrap(err, "cannot get observed composed resources"))
-		return rsp, nil
-	}
-
 	// Build a map from node ID to node for fast lookups.
 	nodesByID := make(map[string]*runtime.Node)
 	for _, node := range rt.Nodes() {
 		nodesByID[node.Spec.Meta.ID] = node
+	}
+
+	// Inject external resources as observed state BEFORE building selectors.
+	// This is critical for multi-phase execution: if external ref A's identity
+	// depends on external ref B's data, we need B's observed state available
+	// when resolving A's identity. On subsequent invocations, previously-fetched
+	// external resources will be in RequiredResources and can be used here.
+	requiredResources := req.GetRequiredResources()
+	for _, r := range rg.Resources {
+		if r.ExternalRef == nil {
+			continue
+		}
+
+		resources, ok := requiredResources[r.ID]
+		if !ok || len(resources.GetItems()) == 0 {
+			f.log.Debug("External resource not available yet", "id", r.ID)
+			continue
+		}
+
+		u := &unstructured.Unstructured{}
+		if err := resource.AsObject(resources.GetItems()[0].GetResource(), u); err != nil {
+			response.Fatal(rsp, errors.Wrapf(err, "cannot unmarshal external resource %q", r.ID))
+			return rsp, nil
+		}
+
+		if node, ok := nodesByID[r.ID]; ok {
+			node.SetObserved([]*unstructured.Unstructured{u})
+			f.log.Debug("SetObserved for external ref resource", "id", r.ID, "name", u.GetName(), "namespace", u.GetNamespace())
+		}
+	}
+
+	// Build external resource requirements using the runtime to evaluate CEL expressions.
+	// This must happen after graph/runtime creation and after injecting any previously-fetched
+	// external resources, because external ref metadata fields (name, namespace) may contain
+	// CEL expressions like ${schema.spec.configMapName} or even ${otherExternalRef.data.name}.
+	externalSelectors, err := f.externalRefSelectorsFromRuntime(rt, oxr.Resource.GetNamespace())
+	if err != nil {
+		response.Fatal(rsp, errors.Wrap(err, "cannot build external resource selectors"))
+		return rsp, nil
+	}
+	maps.Copy(rsp.Requirements.Resources, externalSelectors)
+
+	ocds, err := request.GetObservedComposedResources(req)
+	if err != nil {
+		response.Fatal(rsp, errors.Wrap(err, "cannot get observed composed resources"))
+		return rsp, nil
 	}
 
 	// Group observed composed resources by their node ID.
@@ -181,6 +226,13 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 	for _, node := range rt.Nodes() {
 		id := node.Spec.Meta.ID
 
+		// External refs are read-only - they provide data for CEL expressions but
+		// are not managed by Crossplane. Skip them from desired output.
+		if node.Spec.Meta.Type == graph.NodeTypeExternal {
+			f.log.Debug("Not including external ref in desired resources", "id", id)
+			continue
+		}
+
 		// Check if this node should be ignored (includeWhen evaluated to false).
 		ignored, err := node.IsIgnored()
 		if err != nil {
@@ -188,7 +240,7 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 			continue
 		}
 		if ignored {
-			f.log.Debug("Skipping ignored resource", "id", id)
+			f.log.Debug("Not including ignored resource in desired resources", "id", id)
 			continue
 		}
 
@@ -198,7 +250,7 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 		desired, err := node.GetDesired()
 		if err != nil {
 			if runtime.IsDataPending(err) {
-				f.log.Debug("Skipping resource with pending data", "id", id)
+				f.log.Debug("Not including resource with pending data in desired resources", "id", id)
 				continue
 			}
 			response.Fatal(rsp, errors.Wrapf(err, "cannot get desired state for resource %q", id))
@@ -431,4 +483,58 @@ func RequiredCRDs(gvks ...schema.GroupVersionKind) *fnv1.Requirements {
 	}
 
 	return rq
+}
+
+// externalRefSelectorsFromRuntime builds resource selectors for external references
+// by using the KRO runtime to evaluate CEL expressions in metadata fields.
+// This allows external ref names/namespaces to use expressions like ${schema.spec.configMapName}.
+// The namespace defaults to the XR namespace if not specified, following KRO semantics.
+//
+// If an external ref's identity cannot be resolved yet (e.g., it depends on another
+// resource that isn't observed), it's skipped and will be resolved on a subsequent
+// invocation. This handles the multi-phase execution model of Crossplane functions.
+func (f *Function) externalRefSelectorsFromRuntime(rt *runtime.Runtime, xrNamespace string) (map[string]*fnv1.ResourceSelector, error) {
+	selectors := make(map[string]*fnv1.ResourceSelector)
+
+	for _, node := range rt.Nodes() {
+		if node.Spec.Meta.Type != graph.NodeTypeExternal {
+			continue
+		}
+
+		// Use GetDesiredIdentity to evaluate CEL expressions in metadata.name/namespace.
+		// This only resolves identity fields and doesn't require other dependencies to be ready.
+		desired, err := node.GetDesiredIdentity()
+		if err != nil {
+			// If data is pending (dependency not yet observed), skip this external ref.
+			// It will be resolved on a subsequent invocation when the dependency is available.
+			// This is expected during multi-phase function execution.
+			if runtime.IsDataPending(err) {
+				f.log.Debug("External ref identity not resolvable yet, skipping", "id", node.Spec.Meta.ID)
+				continue
+			}
+			// Other errors (e.g., invalid CEL expression) are fatal.
+			return nil, errors.Wrapf(err, "cannot resolve identity for external ref %q", node.Spec.Meta.ID)
+		}
+
+		if len(desired) == 0 {
+			continue
+		}
+
+		u := desired[0]
+		namespace := u.GetNamespace()
+		if namespace == "" {
+			namespace = xrNamespace
+		}
+
+		selectors[node.Spec.Meta.ID] = &fnv1.ResourceSelector{
+			ApiVersion: u.GetAPIVersion(),
+			Kind:       u.GetKind(),
+			Match: &fnv1.ResourceSelector_MatchName{
+				MatchName: u.GetName(),
+			},
+			Namespace: &namespace,
+		}
+	}
+
+	return selectors, nil
 }

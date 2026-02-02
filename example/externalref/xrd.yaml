@@ -1,9 +1,9 @@
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: networkingstacks.example.crossplane.io
+  name: networkingstacks.externalref.example.crossplane.io
 spec:
-  group: example.crossplane.io
+  group: externalref.example.crossplane.io
   names:
     kind: NetworkingStack
     plural: networkingstacks
@@ -19,8 +19,9 @@ spec:
           spec:
             type: object
             properties:
-              region:
+              configMapName:
                 type: string
+                description: Name of the ConfigMap containing platform configuration
           status:
             type: object
             properties:
@@ -29,11 +30,15 @@ spec:
                 properties:
                   vpcID:
                     type: string
-                  subnetAZA:
+                  subnetID:
                     type: string
-                  subnetAZB:
+                  securityGroupID:
                     type: string
-                  subnetAZC:
+              platformConfig:
+                type: object
+                description: Configuration read from the external ConfigMap
+                properties:
+                  region:
                     type: string
-                  securityGroup:
+                  environment:
                     type: string

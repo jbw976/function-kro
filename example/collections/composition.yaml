@@ -38,7 +38,7 @@ spec:
           apiVersion: ec2.aws.m.upbound.io/v1beta1
           kind: Subnet
           metadata:
-            name: ${schema.spec.name + "-subnet-" + az.suffix}
+            name: ${schema.metadata.name + "-subnet-" + az.suffix}
           spec:
             forProvider:
               region: ${schema.spec.region}
@@ -52,7 +52,7 @@ spec:
           metadata: {}
           spec:
             forProvider:
-              name: my-sg-${schema.spec.name}
+              name: my-sg-${schema.metadata.name}
               region: ${schema.spec.region}
-              description: ${"security group " + schema.spec.name}
+              description: ${"security group " + schema.metadata.name}
               vpcId: ${vpc.status.atProvider.id}

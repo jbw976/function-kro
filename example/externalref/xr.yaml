@@ -1,0 +1,7 @@
+apiVersion: externalref.example.crossplane.io/v1
+kind: NetworkingStack
+metadata:
+  name: cool-network
+  namespace: default
+spec:
+  configMapName: platform-config

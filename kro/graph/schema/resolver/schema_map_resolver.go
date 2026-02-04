@@ -15,12 +15,8 @@
 package resolver
 
 import (
-	"encoding/json"
-	"fmt"
 	"sync"
 
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/types/known/structpb"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/cel/openapi/resolver"
 	"k8s.io/kube-openapi/pkg/validation/spec"
@@ -74,26 +70,4 @@ func (c *combinedResolver) ResolveSchema(gvk schema.GroupVersionKind) (*spec.Sch
 
 	// Fall back to secondary resolver
 	return c.fallback.ResolveSchema(gvk)
-}
-
-// StructToSpecSchema converts a protobuf Struct (as returned by Crossplane's
-// required_schemas) to a kube-openapi spec.Schema.
-func StructToSpecSchema(s *structpb.Struct) (*spec.Schema, error) {
-	if s == nil {
-		return nil, fmt.Errorf("schema struct is nil")
-	}
-
-	// Convert protobuf Struct to JSON bytes
-	jsonBytes, err := protojson.Marshal(s)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal struct to JSON: %w", err)
-	}
-
-	// Unmarshal JSON into spec.Schema
-	schema := &spec.Schema{}
-	if err := json.Unmarshal(jsonBytes, schema); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON to spec.Schema: %w", err)
-	}
-
-	return schema, nil
 }

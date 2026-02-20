@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"k8s.io/apiextensions-apiserver/pkg/generated/openapi"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/cel/openapi/resolver"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 )
@@ -51,7 +52,7 @@ func getObjectMetaSchema() (spec.Schema, error) {
 		}
 		s := def.Schema
 		return &s, true
-	}, "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta")
+	}, metav1.ObjectMeta{}.OpenAPIModelName())
 	if err != nil {
 		return spec.Schema{}, fmt.Errorf("failed to populate refs for ObjectMeta: %w", err)
 	}

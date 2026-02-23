@@ -1,0 +1,76 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: networkingstack-conditionals
+spec:
+  compositeTypeRef:
+    apiVersion: conditionals.example.crossplane.io/v1
+    kind: NetworkingStack
+  mode: Pipeline
+  pipeline:
+  - step: kro-run
+    functionRef:
+      name: function-kro
+    input:
+      apiVersion: kro.fn.crossplane.io/v1beta1
+      kind: ResourceGraph
+      status:
+        networkingInfo:
+          vpcID: ${vpc.status.atProvider.id}
+          subnetID: ${subnet.status.atProvider.id}
+          publicSubnetID: ${publicSubnet.status.atProvider.id}
+          securityGroupID: ${securityGroup.status.atProvider.id}
+      resources:
+      # VPC is always created.
+      - id: vpc
+        template:
+          apiVersion: ec2.aws.m.upbound.io/v1beta1
+          kind: VPC
+          metadata: {}
+          spec:
+            forProvider:
+              region: ${schema.spec.region}
+              cidrBlock: 192.168.0.0/16
+              enableDnsHostnames: false
+              enableDnsSupport: true
+      # Private subnet is always created.
+      - id: subnet
+        template:
+          apiVersion: ec2.aws.m.upbound.io/v1beta1
+          kind: Subnet
+          metadata: {}
+          spec:
+            forProvider:
+              region: ${schema.spec.region}
+              availabilityZone: ${schema.spec.region + "a"}
+              cidrBlock: 192.168.0.0/18
+              vpcId: ${vpc.status.atProvider.id}
+      # Public subnet is only created when enablePublicSubnet is true.
+      - id: publicSubnet
+        includeWhen:
+          - ${schema.spec.enablePublicSubnet}
+        template:
+          apiVersion: ec2.aws.m.upbound.io/v1beta1
+          kind: Subnet
+          metadata: {}
+          spec:
+            forProvider:
+              region: ${schema.spec.region}
+              availabilityZone: ${schema.spec.region + "b"}
+              cidrBlock: 192.168.64.0/18
+              vpcId: ${vpc.status.atProvider.id}
+              mapPublicIpOnLaunch: true
+      # Security group is only created when enableSecurityGroup is true.
+      - id: securityGroup
+        includeWhen:
+          - ${schema.spec.enableSecurityGroup}
+        template:
+          apiVersion: ec2.aws.m.upbound.io/v1beta1
+          kind: SecurityGroup
+          metadata: {}
+          spec:
+            forProvider:
+              name: my-sg-${schema.metadata.name}
+              region: ${schema.spec.region}
+              description: ${"Security group for " + schema.metadata.name}
+              vpcId: ${vpc.status.atProvider.id}

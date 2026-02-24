@@ -77,3 +77,6 @@ spec:
               region: ${schema.spec.region}
               description: something something
               vpcId: ${vpc.status.atProvider.id}
+  - step: auto-ready
+    functionRef:
+      name: function-auto-ready

@@ -74,3 +74,6 @@ spec:
               region: ${schema.spec.region}
               description: ${"Security group for " + schema.metadata.name}
               vpcId: ${vpc.status.atProvider.id}
+  - step: auto-ready
+    functionRef:
+      name: function-auto-ready

@@ -64,3 +64,8 @@ spec:
               region: ${schema.spec.region}
               description: ${"Security group for " + schema.metadata.name}
               vpcId: ${vpc.status.atProvider.id}
+
+# note there is no step with function-auto-ready in this pipeline because we are
+# exclusively using readyWhen statements for each resource. Crossplane will
+# detect that the parent XR is ready when all composed resources have their
+# ready state set to true in the function pipeline via the readyWhen statements.

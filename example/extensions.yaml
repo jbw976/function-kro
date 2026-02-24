@@ -1,0 +1,25 @@
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-ec2
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-ec2:v2.4.0
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-kro
+spec:
+  package: xpkg.upbound.io/jaredorg/function-kro:v0.0.23
+  runtimeConfigRef:
+    apiVersion: pkg.crossplane.io/v1beta1
+    kind: DeploymentRuntimeConfig
+    name: debug-config
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-auto-ready
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-auto-ready:v0.6.0

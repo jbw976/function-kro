@@ -22,6 +22,7 @@ spec:
         platformConfig:
           region: ${platformConfig.data.region}
           environment: ${platformConfig.data.environment}
+          vpcCidr: ${platformConfig.data.vpcCidr}
       resources:
       # External reference to an existing ConfigMap containing platform configuration.
       # This ConfigMap is NOT created by function-kro - it must already exist.
@@ -73,3 +74,6 @@ spec:
               vpcId: ${vpc.status.atProvider.id}
               tags:
                 environment: ${platformConfig.data.environment}
+  - step: auto-ready
+    functionRef:
+      name: function-auto-ready

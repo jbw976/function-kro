@@ -42,3 +42,5 @@ spec:
                     type: string
                   environment:
                     type: string
+                  vpcCidr:
+                    type: string

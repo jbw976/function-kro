@@ -24,3 +24,6 @@ go.work
 /.claude
 CLAUDE.md
 AGENTS.md
+
+# Demo files
+aws-credentials.txt

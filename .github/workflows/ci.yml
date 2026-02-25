@@ -14,9 +14,9 @@ on:
 
 env:
   # Common versions
-  GO_VERSION: '1.23.1'
-  GOLANGCI_VERSION: 'v1.61.0'
-  DOCKER_BUILDX_VERSION: 'v0.11.2'
+  GO_VERSION: '1.25.7'
+  GOLANGCI_VERSION: 'v2.4.0'
+  DOCKER_BUILDX_VERSION: 'v0.23.0'
 
   # These environment variables are important to the Crossplane CLI install.sh
   # script. They determine what version it installs.
@@ -40,10 +40,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false  # The golangci-lint action does its own caching.
@@ -52,7 +52,7 @@ jobs:
         run: go mod tidy && git diff --exit-code go.mod go.sum
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: ${{ env.GOLANGCI_VERSION }}
 
@@ -60,10 +60,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
 
@@ -95,13 +95,13 @@ jobs:
           install: true
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # We ask Docker to use GitHub Action's native caching support to speed up
       # the build, per https://docs.docker.com/build/cache/backends/gha/.
       - name: Build Runtime
         id: image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/${{ matrix.arch }}
@@ -119,7 +119,7 @@ jobs:
         run: ./crossplane xpkg build --package-file=${{ matrix.arch }}.xpkg --package-root=package/ --embed-runtime-image-tarball=runtime-${{ matrix.arch }}.tar
 
       - name: Upload Single-Platform Package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: package-${{ matrix.arch }}
           path: "*.xpkg"
@@ -130,18 +130,20 @@ jobs:
   # pushes them as a multi-platform package. We only push the package it the
   # XPKG_ACCESS_ID and XPKG_TOKEN secrets were provided.
   push:
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     needs:
       - build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download Single-Platform Packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: .
           merge-multiple: true
+          pattern: "!*.dockerbuild" # This gets uploaded by docker/build-push-action but must be skipped: https://github.com/actions/toolkit/pull/1874
 
       - name: Setup the Crossplane CLI
         run: "curl -sL https://raw.githubusercontent.com/crossplane/crossplane/master/install.sh | sh"
@@ -164,6 +166,4 @@ jobs:
 
       - name: Push Multi-Platform Package to Upbound
         if: env.XPKG_ACCESS_ID != ''
-        # XPKG repo name can't contain uppercase characters like UpboundCare, we need to lowercase if the GithubOrg contains them.
-        # See https://github.com/orgs/community/discussions/25768#discussioncomment-8057564 for XPKG@L lowercase explanation
-        run: "./crossplane --verbose xpkg push --package-files $(echo *.xpkg|tr ' ' ,) ${XPKG@L}:${{ env.XPKG_VERSION }}"
+        run: "./crossplane --verbose xpkg push --package-files $(echo *.xpkg|tr ' ' ,) ${{ env.XPKG }}:${{ env.XPKG_VERSION }}"

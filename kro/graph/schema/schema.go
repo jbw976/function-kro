@@ -1,40 +1,96 @@
-// Copyright 2025 The Kube Resource Orchestrator Authors.
+// Copyright 2025 The Kubernetes Authors.
 //
-// Licensed under the Apache License, Version 2.0 (the "License"). You may
-// not use this file except in compliance with the License. A copy of the
-// License is located at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// or in the "license" file accompanying this file. This file is distributed
-// on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-// express or implied. See the License for the specific language governing
-// permissions and limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package schema
 
 import (
-	"slices"
+	"encoding/json"
+	"fmt"
 
+	"k8s.io/apiextensions-apiserver/pkg/generated/openapi"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apiserver/pkg/cel/openapi/resolver"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 )
 
-// GetResourceTopLevelFieldNames returns the top level field names
-// of the resource. It walks through the schema of the resource and
-// retrieves the top level fields including spec, status, metadata,
-// etc.
-//
-// It is up to the caller to sort filter the field names they want.
-func GetResourceTopLevelFieldNames(schema *spec.Schema) []string {
-	fieldNames := []string{}
-	if schema == nil || schema.Properties == nil {
-		return fieldNames
+// ObjectMeta holds the k8s ObjectMeta schema, populated once at startup.
+var ObjectMetaSchema spec.Schema
+
+func init() {
+	// Populate ObjectMeta schema once at startup to avoid repeated query operations.
+	var err error
+	ObjectMetaSchema, err = getObjectMetaSchema()
+	if err != nil {
+		// This should never happen as getObjectMetaSchemaUncached only fails if
+		// Kubernetes OpenAPI definitions are missing, which would be a
+		// critical build/dependency issue.
+		panic(fmt.Sprintf("failed to initialize ObjectMeta schema: %v", err))
 	}
-	for fieldName := range schema.Properties {
-		if fieldName != "apiVersion" && fieldName != "kind" {
-			fieldNames = append(fieldNames, fieldName)
+}
+
+// getObjectMetaSchema extracts the ObjectMeta schema from Kubernetes OpenAPI definitions.
+// This returns the fully resolved ObjectMeta schema including all nested types like
+// OwnerReference, ManagedFieldsEntry, Time, etc.
+func getObjectMetaSchema() (spec.Schema, error) {
+	// get OpenAPI definitions from apiserver package
+	definitions := openapi.GetOpenAPIDefinitions(spec.MustCreateRef)
+	populatedSchema, err := resolver.PopulateRefs(func(ref string) (*spec.Schema, bool) {
+		def, ok := definitions[ref]
+		if !ok {
+			return nil, false
 		}
+		s := def.Schema
+		return &s, true
+	}, metav1.ObjectMeta{}.OpenAPIModelName())
+	if err != nil {
+		return spec.Schema{}, fmt.Errorf("failed to populate refs for ObjectMeta: %w", err)
+	}
+	return *populatedSchema, nil
+}
+
+// WrapSchemaAsList wraps an OpenAPI schema as an array schema.
+// This is used for collection resources which are typed as list(ResourceType)
+// so other resources can reference them with CEL list functions.
+func WrapSchemaAsList(itemSchema *spec.Schema) *spec.Schema {
+	return &spec.Schema{
+		SchemaProps: spec.SchemaProps{
+			Type: []string{"array"},
+			Items: &spec.SchemaOrArray{
+				Schema: itemSchema,
+			},
+		},
+	}
+}
+
+// DeepCopySchema creates a deep copy of a spec.Schema.
+// This is useful when you need to modify a schema without affecting the original.
+func DeepCopySchema(schema *spec.Schema) *spec.Schema {
+	if schema == nil {
+		return nil
 	}
 
-	slices.Sort(fieldNames)
-	return fieldNames
+	// Use JSON round-trip for deep copy since spec.Schema is a complex struct
+	// with many nested pointers and maps.
+	data, err := json.Marshal(schema)
+	if err != nil {
+		return nil
+	}
+
+	copied := &spec.Schema{}
+	if err := json.Unmarshal(data, copied); err != nil {
+		return nil
+	}
+
+	return copied
 }

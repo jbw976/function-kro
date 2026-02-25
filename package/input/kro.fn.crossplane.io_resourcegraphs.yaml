@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.0
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: resourcegraphs.kro.fn.crossplane.io
 spec:
   group: kro.fn.crossplane.io
@@ -19,7 +19,7 @@ spec:
   - name: v1beta1
     schema:
       openAPIV3Schema:
-        description: Input can be used to provide input to this Function.
+        description: ResourceGraph can be used to provide input to this Function.
         properties:
           apiVersion:
             description: |-
@@ -41,27 +41,90 @@ spec:
           resources:
             description: The resources that are part of the ResourceGraph.
             items:
+              description: |-
+                Resource represents a Kubernetes resource that is part of the ResourceGraph.
+                Each resource can either be created using a template or reference an existing resource.
               properties:
+                externalRef:
+                  description: |-
+                    ExternalRef references an existing resource in the cluster instead of creating one.
+                    This is useful for reading existing resources and using their values in other resources.
+                    Exactly one of template or externalRef must be provided.
+                  properties:
+                    apiVersion:
+                      description: APIVersion is the API version of the external resource.
+                      type: string
+                    kind:
+                      description: Kind is the kind of the external resource.
+                      type: string
+                    metadata:
+                      description: Metadata contains the name and optional namespace
+                        of the external resource.
+                      properties:
+                        name:
+                          description: Name is the name of the external resource to
+                            reference.
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace is the namespace of the external resource.
+                            If empty, the instance's namespace will be used.
+                          type: string
+                      required:
+                      - name
+                      type: object
+                  required:
+                  - apiVersion
+                  - kind
+                  - metadata
+                  type: object
+                forEach:
+                  description: |-
+                    ForEach expands this resource into a collection of resources.
+                    Each entry is a map with exactly one key-value pair where the key is the
+                    iterator variable name and the value is a CEL expression returning a list.
+                  items:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ForEachDimension is a map with exactly one entry where the key is the iterator
+                      variable name and the value is a CEL expression that returns a list.
+                    type: object
+                  type: array
                 id:
+                  description: |-
+                    ID is a unique identifier for this resource within the ResourceGraph.
+                    It is used to reference this resource in CEL expressions from other resources.
                   type: string
                 includeWhen:
+                  description: |-
+                    IncludeWhen is a list of CEL expressions that determine whether this resource should be created.
+                    All expressions must evaluate to true for the resource to be included.
+                    If not specified, the resource is always included.
                   items:
                     type: string
                   type: array
                 readyWhen:
+                  description: |-
+                    ReadyWhen is a list of CEL expressions that determine when this resource is considered ready.
+                    All expressions must evaluate to true for the resource to be ready.
+                    If not specified, the resource is considered ready when it exists.
                   items:
                     type: string
                   type: array
                 template:
+                  description: |-
+                    Template is the Kubernetes resource manifest to create.
+                    It can contain CEL expressions (using ${...} syntax) that reference other resources.
+                    Exactly one of template or externalRef must be provided.
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
               required:
               - id
-              - template
               type: object
             type: array
           status:
-            description: The status of the ResourceGraph.
+            description: The status schema of the ResourceGraph using CEL expressions.
             type: object
             x-kubernetes-preserve-unknown-fields: true
         type: object

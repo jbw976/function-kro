@@ -1,6 +1,6 @@
 apiVersion: example.crossplane.io/v1
 kind: NetworkingStack
 metadata:
-  name: example-stack
-spec:
   name: cool-network
+spec:
+  region: us-west-2

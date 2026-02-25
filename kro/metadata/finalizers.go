@@ -1,90 +1,61 @@
-// Copyright 2025 The Kube Resource Orchestrator Authors.
+// Copyright 2025 The Kubernetes Authors.
 //
-// Licensed under the Apache License, Version 2.0 (the "License"). You may
-// not use this file except in compliance with the License. A copy of the
-// License is located at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// or in the "license" file accompanying this file. This file is distributed
-// on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-// express or implied. See the License for the specific language governing
-// permissions and limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package metadata
 
 import (
-	"fmt"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"github.com/kro-run/kro/api/v1alpha1"
+	"github.com/upbound/function-kro/input/v1beta1"
 )
 
-const kroFinalizer = v1alpha1.KroDomainName + "/finalizer"
+const kroFinalizer = v1beta1.KRODomainName + "/finalizer"
 
-// SetResourceGraphDefinitionFinalizer adds the Kro finalizer to the object if it's not already present.
+// SetResourceGraphDefinitionFinalizer adds the kro finalizer to the object if it's not already present.
 func SetResourceGraphDefinitionFinalizer(obj metav1.Object) {
 	if !HasResourceGraphDefinitionFinalizer(obj) {
 		obj.SetFinalizers(append(obj.GetFinalizers(), kroFinalizer))
 	}
 }
 
-// RemoveResourceGraphDefinitionFinalizer removes the Kro finalizer from the object.
+// RemoveResourceGraphDefinitionFinalizer removes the kro finalizer from the object.
 func RemoveResourceGraphDefinitionFinalizer(obj metav1.Object) {
 	obj.SetFinalizers(removeString(obj.GetFinalizers(), kroFinalizer))
 }
 
-// HasResourceGraphDefinitionFinalizer checks if the object has the Kro finalizer.
+// HasResourceGraphDefinitionFinalizer checks if the object has the kro finalizer.
 func HasResourceGraphDefinitionFinalizer(obj metav1.Object) bool {
 	return containsString(obj.GetFinalizers(), kroFinalizer)
 }
 
-// SetInstanceFinalizerUnstructured adds an instance-specific finalizer to an unstructured object.
-func SetInstanceFinalizerUnstructured(obj *unstructured.Unstructured) error {
-	finalizers, found, err := unstructured.NestedStringSlice(obj.Object, "metadata", "finalizers")
-	if err != nil {
-		return fmt.Errorf("error getting finalizers: %w", err)
-	}
-
-	if !found || !containsString(finalizers, kroFinalizer) {
-		finalizers = append(finalizers, kroFinalizer)
-		if err := unstructured.SetNestedStringSlice(obj.Object, finalizers, "metadata", "finalizers"); err != nil {
-			return fmt.Errorf("error setting finalizers: %w", err)
-		}
-	}
-	return nil
+// SetInstanceFinalizer adds an instance-specific finalizer to an unstructured object.
+func SetInstanceFinalizer(obj client.Object) {
+	controllerutil.AddFinalizer(obj, kroFinalizer)
 }
 
-// RemoveInstanceFinalizerUnstructured removes an instance-specific finalizer from an unstructured object.
-func RemoveInstanceFinalizerUnstructured(obj *unstructured.Unstructured) error {
-	finalizers, found, err := unstructured.NestedStringSlice(obj.Object, "metadata", "finalizers")
-	if err != nil {
-		return fmt.Errorf("error getting finalizers: %w", err)
+// RemoveInstanceFinalizer removes an instance-specific finalizer from an unstructured object.
+func RemoveInstanceFinalizer(obj client.Object) {
+	if controllerutil.ContainsFinalizer(obj, kroFinalizer) {
+		controllerutil.RemoveFinalizer(obj, kroFinalizer)
 	}
-
-	if found {
-		finalizers = removeString(finalizers, kroFinalizer)
-		if err := unstructured.SetNestedStringSlice(obj.Object, finalizers, "metadata", "finalizers"); err != nil {
-			return fmt.Errorf("error setting finalizers: %w", err)
-		}
-	}
-	return nil
 }
 
-// HasInstanceFinalizerUnstructured checks if an unstructured object has an instance-specific finalizer.
-func HasInstanceFinalizerUnstructured(obj *unstructured.Unstructured) (bool, error) {
-	finalizers, found, err := unstructured.NestedStringSlice(obj.Object, "metadata", "finalizers")
-	if err != nil {
-		return false, fmt.Errorf("error getting finalizers: %w", err)
-	}
-
-	if !found {
-		return false, nil
-	}
-
-	return containsString(finalizers, kroFinalizer), nil
+// HasInstanceFinalizer checks if an unstructured object has an instance-specific finalizer.
+func HasInstanceFinalizer(obj client.Object) bool {
+	return controllerutil.ContainsFinalizer(obj, kroFinalizer)
 }
 
 // Helper functions

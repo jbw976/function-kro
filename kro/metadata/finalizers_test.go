@@ -1,15 +1,16 @@
-// Copyright 2025 The Kube Resource Orchestrator Authors.
+// Copyright 2025 The Kubernetes Authors.
 //
-// Licensed under the Apache License, Version 2.0 (the "License"). You may
-// not use this file except in compliance with the License. A copy of the
-// License is located at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// or in the "license" file accompanying this file. This file is distributed
-// on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-// express or implied. See the License for the specific language governing
-// permissions and limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package metadata
 
@@ -19,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestResourceGraphDefinitionFinalizer(t *testing.T) {
@@ -70,21 +72,21 @@ func TestResourceGraphDefinitionFinalizer(t *testing.T) {
 func TestInstanceFinalizerUnstructured(t *testing.T) {
 	cases := []struct {
 		name          string
-		initialObject *unstructured.Unstructured
-		operation     func(*unstructured.Unstructured) error
-		check         func(*unstructured.Unstructured) (bool, error)
+		initialObject client.Object
+		operation     func(object client.Object)
+		check         func(object client.Object) bool
 		expected      bool
 		expectError   bool
 	}{
 		{
-			name: "Set instance finalizer on unstructred obj w/o finalizers",
+			name: "Set instance finalizer on unstructured obj w/o finalizers",
 			initialObject: &unstructured.Unstructured{
 				Object: map[string]interface{}{
 					"metadata": map[string]interface{}{},
 				},
 			},
-			operation: SetInstanceFinalizerUnstructured,
-			check:     HasInstanceFinalizerUnstructured,
+			operation: SetInstanceFinalizer,
+			check:     HasInstanceFinalizer,
 			expected:  true,
 		},
 		{
@@ -96,8 +98,8 @@ func TestInstanceFinalizerUnstructured(t *testing.T) {
 					},
 				},
 			},
-			operation: SetInstanceFinalizerUnstructured,
-			check:     HasInstanceFinalizerUnstructured,
+			operation: SetInstanceFinalizer,
+			check:     HasInstanceFinalizer,
 			expected:  true,
 		},
 		{
@@ -109,8 +111,8 @@ func TestInstanceFinalizerUnstructured(t *testing.T) {
 					},
 				},
 			},
-			operation: RemoveInstanceFinalizerUnstructured,
-			check:     HasInstanceFinalizerUnstructured,
+			operation: RemoveInstanceFinalizer,
+			check:     HasInstanceFinalizer,
 			expected:  false,
 		},
 		{
@@ -122,23 +124,17 @@ func TestInstanceFinalizerUnstructured(t *testing.T) {
 					},
 				},
 			},
-			operation: RemoveInstanceFinalizerUnstructured,
-			check:     HasInstanceFinalizerUnstructured,
+			operation: RemoveInstanceFinalizer,
+			check:     HasInstanceFinalizer,
 			expected:  false,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.operation(tc.initialObject)
-			if tc.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				hasF, err := tc.check(tc.initialObject)
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, hasF)
-			}
+			tc.operation(tc.initialObject)
+			hasF := tc.check(tc.initialObject)
+			assert.Equal(t, tc.expected, hasF)
 		})
 	}
 }

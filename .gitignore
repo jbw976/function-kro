@@ -19,3 +19,9 @@
 
 # Go workspace file
 go.work
+
+# ignore AI tools settings/config
+/.claude
+
+# Demo files
+aws-credentials.txt

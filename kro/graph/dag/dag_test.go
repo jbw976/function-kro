@@ -1,15 +1,16 @@
-// Copyright 2025 The Kube Resource Orchestrator Authors.
+// Copyright 2025 The Kubernetes Authors.
 //
-// Licensed under the Apache License, Version 2.0 (the "License"). You may
-// not use this file except in compliance with the License. A copy of the
-// License is located at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// or in the "license" file accompanying this file. This file is distributed
-// on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-// express or implied. See the License for the specific language governing
-// permissions and limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package dag
 
@@ -21,7 +22,7 @@ import (
 )
 
 func TestDAGAddNode(t *testing.T) {
-	d := NewDirectedAcyclicGraph()
+	d := NewDirectedAcyclicGraph[string]()
 
 	if err := d.AddVertex("A", 1); err != nil {
 		t.Errorf("Failed to add node: %v", err)
@@ -37,7 +38,7 @@ func TestDAGAddNode(t *testing.T) {
 }
 
 func TestDAGAddEdge(t *testing.T) {
-	d := NewDirectedAcyclicGraph()
+	d := NewDirectedAcyclicGraph[string]()
 	if err := d.AddVertex("A", 1); err != nil {
 		t.Fatalf("error from AddVertex(A, 1): %v", err)
 	}
@@ -59,7 +60,7 @@ func TestDAGAddEdge(t *testing.T) {
 }
 
 func TestDAGHasCycle(t *testing.T) {
-	d := NewDirectedAcyclicGraph()
+	d := NewDirectedAcyclicGraph[string]()
 	if err := d.AddVertex("A", 1); err != nil {
 		t.Fatalf("error from AddVertex(A, 1): %v", err)
 	}
@@ -94,7 +95,7 @@ func TestDAGHasCycle(t *testing.T) {
 
 	if _, err := d.TopologicalSort(); err == nil {
 		t.Errorf("TopologicalSort failed to detect cycle")
-	} else if AsCycleError(err) == nil {
+	} else if AsCycleError[string](err) == nil {
 		t.Errorf("TopologicalSort returned unexpected error: %T %v", err, err)
 	}
 }
@@ -110,14 +111,16 @@ func TestDAGTopologicalSort(t *testing.T) {
 		{Nodes: "A,B", Edges: "B->A", Want: "B,A"},
 		{Nodes: "A,B,C,D,E,F", Want: "A,B,C,D,E,F"},
 		{Nodes: "A,B,C,D,E,F", Edges: "C->D", Want: "A,B,C,D,E,F"},
-		{Nodes: "A,B,C,D,E,F", Edges: "D->C", Want: "A,B,D,E,F,C"},
+		{Nodes: "A,B,C,D,E,F", Edges: "D->C", Want: "A,B,D,C,E,F"},
 		{Nodes: "A,B,C,D,E,F", Edges: "F->A,F->B,B->A", Want: "C,D,E,F,B,A"},
-		{Nodes: "A,B,C,D,E,F", Edges: "B->A,C->A,D->B,D->C,F->E,A->E", Want: "D,F,B,C,A,E"},
+		{Nodes: "A,B,C,D,E,F", Edges: "B->A,C->A,D->B,D->C,F->E,A->E", Want: "D,B,C,A,F,E"},
+		// B depends on A and C; D depends on C. B should come before D since B has lower order.
+		{Nodes: "A,B,C,D", Edges: "A->B,C->B,C->D", Want: "A,C,B,D"},
 	}
 
 	for i, g := range grid {
 		t.Run(fmt.Sprintf("[%d] nodes=%s,edges=%s", i, g.Nodes, g.Edges), func(t *testing.T) {
-			d := NewDirectedAcyclicGraph()
+			d := NewDirectedAcyclicGraph[string]()
 			for i, node := range strings.Split(g.Nodes, ",") {
 				if err := d.AddVertex(node, i); err != nil {
 					t.Fatalf("adding vertex: %v", err)
@@ -149,7 +152,7 @@ func TestDAGTopologicalSort(t *testing.T) {
 	}
 }
 
-func checkValidTopologicalOrder(t *testing.T, d *DirectedAcyclicGraph, order []string) {
+func checkValidTopologicalOrder(t *testing.T, d *DirectedAcyclicGraph[string], order []string) {
 	pos := make(map[string]int)
 	for i, node := range order {
 		pos[node] = i

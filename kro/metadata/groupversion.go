@@ -1,15 +1,16 @@
-// Copyright 2025 The Kube Resource Orchestrator Authors.
+// Copyright 2025 The Kubernetes Authors.
 //
-// Licensed under the Apache License, Version 2.0 (the "License"). You may
-// not use this file except in compliance with the License. A copy of the
-// License is located at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// or in the "license" file accompanying this file. This file is distributed
-// on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-// express or implied. See the License for the specific language governing
-// permissions and limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package metadata
 
@@ -19,15 +20,19 @@ import (
 
 	"github.com/gobuffalo/flect"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 
-	"github.com/kro-run/kro/api/v1alpha1"
+	"github.com/upbound/function-kro/input/v1beta1"
 )
 
 const (
-	KroInstancesGroupSuffix = v1alpha1.KroDomainName
+	KROInstancesGroupSuffix = v1beta1.KRODomainName
 )
 
 // ExtractGVKFromUnstructured extracts the GroupVersionKind from an unstructured object.
+// It performs early validation to fail fast and avoid unnecessary API calls:
+// - apiVersion: parsed with schema.ParseGroupVersion for proper validation
+// - kind: validated as DNS-1035 label after lowercasing
 func ExtractGVKFromUnstructured(unstructured map[string]interface{}) (schema.GroupVersionKind, error) {
 	kind, ok := unstructured["kind"].(string)
 	if !ok {
@@ -39,59 +44,32 @@ func ExtractGVKFromUnstructured(unstructured map[string]interface{}) (schema.Gro
 		return schema.GroupVersionKind{}, fmt.Errorf("apiVersion not found or not a string")
 	}
 
-	parts := strings.Split(apiVersion, "/")
-	if len(parts) > 2 {
-		return schema.GroupVersionKind{}, fmt.Errorf("invalid apiVersion format: %s", apiVersion)
+	// Early validation: parse apiVersion using schema.ParseGroupVersion
+	// This validates the format before attempting schema resolution
+	gv, err := schema.ParseGroupVersion(apiVersion)
+	if err != nil {
+		return schema.GroupVersionKind{}, fmt.Errorf("invalid apiVersion format %q: %w", apiVersion, err)
 	}
 
-	var group, version string
-	if len(parts) == 2 {
-		group, version = parts[0], parts[1]
-	} else {
-		version = parts[0]
+	// Early validation: validate kind as DNS-1035 label after lowercasing
+	// This ensures the kind is valid before attempting API lookups
+	kindLower := strings.ToLower(kind)
+	if errs := validation.IsDNS1035Label(kindLower); len(errs) > 0 {
+		return schema.GroupVersionKind{}, fmt.Errorf("invalid kind %q: %s (must be a valid DNS-1035 label when lowercased)", kind, strings.Join(errs, ", "))
 	}
 
 	return schema.GroupVersionKind{
-		Group:   group,
-		Version: version,
+		Group:   gv.Group,
+		Version: gv.Version,
 		Kind:    kind,
 	}, nil
-}
-
-func GetResourceGraphDefinitionInstanceGVK(group, apiVersion, kind string) schema.GroupVersionKind {
-	//pluralKind := flect.Pluralize(strings.ToLower(kind))
-
-	return schema.GroupVersionKind{
-		Group:   group,
-		Version: apiVersion,
-		Kind:    kind,
-	}
 }
 
 func GetResourceGraphDefinitionInstanceGVR(group, apiVersion, kind string) schema.GroupVersionResource {
 	pluralKind := flect.Pluralize(strings.ToLower(kind))
 	return schema.GroupVersionResource{
-		Group:    fmt.Sprintf("%s.%s", pluralKind, group),
+		Group:    group,
 		Version:  apiVersion,
 		Resource: pluralKind,
-	}
-}
-
-func GVRtoGVK(gvr schema.GroupVersionResource) schema.GroupVersionKind {
-	singular := flect.Singularize(gvr.Resource)
-	return schema.GroupVersionKind{
-		Group:   gvr.Group,
-		Version: gvr.Version,
-		Kind:    singular,
-	}
-}
-
-func GVKtoGVR(gvk schema.GroupVersionKind) schema.GroupVersionResource {
-	plural := flect.Pluralize(gvk.Kind)
-	resource := strings.ToLower(plural)
-	return schema.GroupVersionResource{
-		Group:    gvk.Group,
-		Version:  gvk.Version,
-		Resource: resource,
 	}
 }

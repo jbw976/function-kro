@@ -1,51 +1,44 @@
-// Copyright 2025 The Kube Resource Orchestrator Authors.
+// Copyright 2025 The Kubernetes Authors.
 //
-// Licensed under the Apache License, Version 2.0 (the "License"). You may
-// not use this file except in compliance with the License. A copy of the
-// License is located at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// or in the "license" file accompanying this file. This file is distributed
-// on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-// express or implied. See the License for the specific language governing
-// permissions and limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package graph
 
 import (
+	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+
 	"github.com/upbound/function-kro/kro/graph/dag"
-	"github.com/upbound/function-kro/kro/runtime"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// Graph represents a processed resourcegraphdefinition. It contains the DAG representation
-// and everything needed to "manage" the resources defined in the resource graph definition.
+// Graph represents a processed ResourceGraphDefinition.
+// It contains the DAG and immutable node specs produced by the builder.
 type Graph struct {
-	// DAG is the directed acyclic graph representation of the resource graph definition.
-	DAG *dag.DirectedAcyclicGraph
-	// Instance is the processed resource graph definition instance.
-	Instance *Resource
-	// Resources is a map of the processed resources in the resource graph definition.
-	Resources map[string]*Resource
-	// TopologicalOrder is the topological order of the resources in the resource graph definition.
+	// DAG is the directed acyclic graph of node dependencies.
+	DAG *dag.DirectedAcyclicGraph[string]
+
+	// Instance is the instance node (the generated CRD instance).
+	Instance *Node
+
+	// Nodes maps node ID to immutable node spec.
+	Nodes map[string]*Node
+
+	// Resources is an alias for Nodes kept for backward compatibility in tests and tooling.
+	Resources map[string]*Node
+
+	// TopologicalOrder is the sorted order of node IDs for processing.
+	// This excludes the instance node.
 	TopologicalOrder []string
-}
 
-// NewGraphRuntime creates a new runtime resource graph definition from the resource graph definition instance.
-func (rgd *Graph) NewGraphRuntime(newInstance *unstructured.Unstructured) (*runtime.ResourceGraphDefinitionRuntime, error) {
-	// we need to copy the resources to the runtime resources, mainly focusing
-	// on the variables and dependencies.
-	resources := make(map[string]runtime.Resource)
-	for name, resource := range rgd.Resources {
-		resources[name] = resource.DeepCopy()
-	}
-
-	instance := rgd.Instance.DeepCopy()
-	instance.originalObject = newInstance
-	rt, err := runtime.NewResourceGraphDefinitionRuntime(instance, resources, rgd.TopologicalOrder)
-	if err != nil {
-		return nil, err
-	}
-	return rt, nil
+	// CRD is the generated CustomResourceDefinition for the instance.
+	CRD *extv1.CustomResourceDefinition
 }

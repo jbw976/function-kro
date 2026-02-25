@@ -1,21 +1,25 @@
-// Copyright 2025 The Kube Resource Orchestrator Authors.
+// Copyright 2025 The Kubernetes Authors.
 //
-// Licensed under the Apache License, Version 2.0 (the "License"). You may
-// not use this file except in compliance with the License. A copy of the
-// License is located at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// or in the "license" file accompanying this file. This file is distributed
-// on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-// express or implied. See the License for the specific language governing
-// permissions and limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package graph
 
 import (
 	"fmt"
 	"regexp"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/upbound/function-kro/input/v1beta1"
 )
@@ -33,34 +37,55 @@ var (
 	// kubernetesVersionRegex
 	kubernetesVersionRegex = regexp.MustCompile(`^v\d+(?:(?:alpha|beta)\d+)?$`)
 
-	// reservedKeyWords is a list of reserved words in kro.
-	reservedKeyWords = []string{
+	// celReservedSymbols is a list of RESERVED symbols defined in the CEL lexer.
+	// No identifiers are allowed to collide with these symbols.
+	// https://github.com/google/cel-spec/blob/master/doc/langdef.md#syntax
+	celReservedSymbols = sets.NewString(
+		"true", "false", "null", "in",
+		"as", "break", "const", "continue", "else",
+		"for", "function", "if", "import", "let",
+		"loop", "package", "namespace", "return",
+		"var", "void", "while",
+	)
+
+	// kroReservedKeyWords is a list of reserved words in kro.
+	kroReservedKeyWords = sets.NewString(
 		"apiVersion",
 		"context",
 		"dependency",
 		"dependencies",
+		"each", // Reserved for per-item readiness in collections
 		"externalRef",
 		"externalReference",
 		"externalRefs",
 		"externalReferences",
 		"graph",
 		"instance",
+		"item",
+		"items",
 		"kind",
+		"kro",
 		"metadata",
 		"namespace",
 		"object",
 		"resource",
 		"resourcegraphdefinition",
+		"resourceGraphDefinition",
 		"resources",
+		"root",
 		"runtime",
+		"schema",
+		"self",
 		"serviceAccountName",
 		"spec",
 		"status",
-		"kro",
+		"this",
 		"variables",
 		"vars",
 		"version",
-	}
+	)
+
+	reservedKeyWords = kroReservedKeyWords.Union(celReservedSymbols)
 )
 
 // isValidResourceID checks if the given id is a valid KRO resource id (loawercase)
@@ -75,22 +100,17 @@ func isValidKindName(name string) bool {
 
 // isKROReservedWord checks if the given word is a reserved word in KRO.
 func isKROReservedWord(word string) bool {
-	for _, w := range reservedKeyWords {
-		if w == word {
-			return true
-		}
-	}
-	return false
+	return reservedKeyWords.Has(word)
 }
 
-// validateResource performs basic validation on a given resourcegraphdefinition.
+// validateResourceIDs performs basic validation on a given ResourceGraph.
 // It checks that there are no duplicate resource ids and that the
 // resource ids are conformant to the KRO naming convention.
 //
 // The KRO naming convention is as follows:
 // - The id should start with a lowercase letter.
 // - The id should only contain alphanumeric characters.
-// - does not contain any special characters, underscores, or hyphens.
+// - Does not contain any special characters, underscores, or hyphens.
 func validateResourceIDs(rgd *v1beta1.ResourceGraph) error {
 	seen := make(map[string]struct{})
 	for _, res := range rgd.Resources {
@@ -107,6 +127,60 @@ func validateResourceIDs(rgd *v1beta1.ResourceGraph) error {
 		}
 		seen[res.ID] = struct{}{}
 	}
+
+	// Validate forEach iterators after collecting all resource IDs
+	resourceIDs := sets.NewString()
+	for _, res := range rgd.Resources {
+		resourceIDs.Insert(res.ID)
+	}
+	for _, res := range rgd.Resources {
+		if err := validateForEachDimensions(res, resourceIDs); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateForEachDimensions validates the forEach iterators for a resource.
+// It checks that:
+// - Iterator names are valid identifiers (lowerCamelCase)
+// - Iterator names are not reserved keywords
+// - Iterator names do not conflict with resource IDs
+// - Iterator names are unique within the same resource
+func validateForEachDimensions(res *v1beta1.Resource, resourceIDs sets.String) error {
+	//TODO: Validate a maximum number dimensions
+
+	if len(res.ForEach) == 0 {
+		return nil
+	}
+
+	seenIterators := sets.NewString()
+	for _, iterMap := range res.ForEach {
+		for iterName := range iterMap {
+			// Check if iterator name is a valid identifier
+			if !isValidResourceID(iterName) {
+				return fmt.Errorf("resource %q: forEach iterator name %q is not valid: must be lowerCamelCase", res.ID, iterName)
+			}
+
+			// Check if iterator name is a reserved keyword
+			if isKROReservedWord(iterName) {
+				return fmt.Errorf("resource %q: forEach iterator name %q is a reserved keyword", res.ID, iterName)
+			}
+
+			// Check if iterator name conflicts with a resource ID
+			if resourceIDs.Has(iterName) {
+				return fmt.Errorf("resource %q: forEach iterator name %q conflicts with resource ID", res.ID, iterName)
+			}
+
+			// Check for duplicate iterator names within the same resource
+			if seenIterators.Has(iterName) {
+				return fmt.Errorf("resource %q: duplicate forEach iterator name %q", res.ID, iterName)
+			}
+			seenIterators.Insert(iterName)
+		}
+	}
+
 	return nil
 }
 
@@ -136,7 +210,7 @@ func validateKubernetesObjectStructure(obj map[string]interface{}) error {
 
 	metadata, exists := obj["metadata"]
 	if !exists {
-		return nil
+		return fmt.Errorf("metadata field not found")
 	}
 	_, isMap := metadata.(map[string]interface{})
 	if !isMap {
@@ -152,5 +226,41 @@ func validateKubernetesVersion(version string) error {
 	if !kubernetesVersionRegex.MatchString(version) {
 		return fmt.Errorf("version %s is not a valid Kubernetes version", version)
 	}
+	return nil
+}
+
+// validateCombinableResourceFields checks that certain fields in a resource
+// are not used together in an invalid combination, and that required fields are present.
+func validateCombinableResourceFields(res *v1beta1.Resource) error {
+	hasTemplate := len(res.Template.Raw) > 0 // Template is runtime.RawExtension (struct)
+	hasExternalRef := res.ExternalRef != nil // ExternalRef is a pointer
+
+	if !hasTemplate && !hasExternalRef {
+		return fmt.Errorf("resource %q: exactly one of template or externalRef must be provided", res.ID)
+	}
+	if hasExternalRef && hasTemplate {
+		return fmt.Errorf("resource %q: cannot use externalRef with template", res.ID)
+	}
+	if hasExternalRef && len(res.ForEach) > 0 {
+		return fmt.Errorf("resource %q: cannot use externalRef with forEach", res.ID)
+	}
+	return nil
+}
+
+// validateTemplateConstraints enforces template-level constraints before parsing expressions.
+// Keep this small and focused on invariants that must hold regardless of CEL.
+//
+// TODO: We need more constraints here, e.g, you cannot set kro owned labels/annotations...
+func validateTemplateConstraints(rgResource *v1beta1.Resource, resourceObject map[string]interface{}, namespaced bool) error {
+	if !namespaced {
+		_, found, err := unstructured.NestedFieldNoCopy(resourceObject, "metadata", "namespace")
+		if err != nil {
+			return fmt.Errorf("resource %q has invalid metadata.namespace: %w", rgResource.ID, err)
+		}
+		if found {
+			return fmt.Errorf("resource %q is cluster-scoped and must not set metadata.namespace", rgResource.ID)
+		}
+	}
+
 	return nil
 }

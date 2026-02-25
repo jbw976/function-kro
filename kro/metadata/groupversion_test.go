@@ -1,19 +1,21 @@
-// Copyright 2025 The Kube Resource Orchestrator Authors.
+// Copyright 2025 The Kubernetes Authors.
 //
-// Licensed under the Apache License, Version 2.0 (the "License"). You may
-// not use this file except in compliance with the License. A copy of the
-// License is located at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// or in the "license" file accompanying this file. This file is distributed
-// on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-// express or implied. See the License for the specific language governing
-// permissions and limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package metadata
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -66,12 +68,36 @@ func TestExtractGVKFromUnstructured(t *testing.T) {
 			expectedErr: "apiVersion not found or not a string",
 		},
 		{
-			name: "Invalid apiVersion format",
+			name: "Invalid apiVersion format - too many slashes",
 			unstructured: map[string]interface{}{
 				"apiVersion": "apps/v1/beta",
 				"kind":       "Deployment",
 			},
-			expectedErr: "invalid apiVersion format: apps/v1/beta",
+			expectedErr: "invalid apiVersion format",
+		},
+		{
+			name: "Invalid kind - not DNS-1035 label (contains underscore)",
+			unstructured: map[string]interface{}{
+				"apiVersion": "v1",
+				"kind":       "Invalid_Kind",
+			},
+			expectedErr: "invalid kind",
+		},
+		{
+			name: "Invalid kind - not DNS-1035 label (starts with number)",
+			unstructured: map[string]interface{}{
+				"apiVersion": "v1",
+				"kind":       "123Kind",
+			},
+			expectedErr: "invalid kind",
+		},
+		{
+			name: "Invalid kind - not DNS-1035 label (too long)",
+			unstructured: map[string]interface{}{
+				"apiVersion": "v1",
+				"kind":       strings.Repeat("a", 64), // DNS-1035 labels max length is 63
+			},
+			expectedErr: "invalid kind",
 		},
 		{
 			name: "Non-string kind",

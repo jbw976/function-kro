@@ -145,7 +145,10 @@ func (b *Builder) NewResourceGraphDefinition(rg *v1beta1.ResourceGraph, xrSchema
 	//
 	// not that we only include the spec and metadata fields, instance status references
 	// are not allowed in RGDs (yet)
-	schemaWithoutStatus := getSchemaWithoutStatus(xrSchema)
+	schemaWithoutStatus, err := getSchemaWithoutStatus(xrSchema)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schema without status: %w", err)
+	}
 	celSchemas[SchemaVarName] = schemaWithoutStatus
 
 	// Create a DeclTypeProvider for introspecting type structures during validation
@@ -1048,13 +1051,16 @@ func validateForEachExpressions(env *cel.Env, node *Node) (map[string]*cel.Type,
 // getSchemaWithoutStatus creates a copy of the schema with status removed and
 // metadata added. This is used for the "schema" CEL variable which should only
 // include spec fields (not status) but should include metadata for templating.
-func getSchemaWithoutStatus(schema *spec.Schema) *spec.Schema {
+func getSchemaWithoutStatus(schema *spec.Schema) (*spec.Schema, error) {
 	if schema == nil {
-		return nil
+		return nil, nil
 	}
 
 	// Deep copy the schema to avoid modifying the original
-	schemaCopy := kroschema.DeepCopySchema(schema)
+	schemaCopy, err := kroschema.DeepCopySchema(schema)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deep copy schema: %w", err)
+	}
 
 	if schemaCopy.Properties == nil {
 		schemaCopy.Properties = make(map[string]spec.Schema)
@@ -1066,7 +1072,7 @@ func getSchemaWithoutStatus(schema *spec.Schema) *spec.Schema {
 	// Add metadata schema
 	schemaCopy.Properties["metadata"] = kroschema.ObjectMetaSchema
 
-	return schemaCopy
+	return schemaCopy, nil
 }
 
 // collectNodeSchemas builds a map of node IDs to their OpenAPI schemas.

@@ -22,7 +22,7 @@ import (
 	"github.com/crossplane-contrib/function-kro/input/v1beta1"
 )
 
-const kroFinalizer = v1alpha1.KRODomainName + "/finalizer"
+const kroFinalizer = v1beta1.KRODomainName + "/finalizer"
 
 // SetResourceGraphDefinitionFinalizer adds the kro finalizer to the object if it's not already present.
 func SetResourceGraphDefinitionFinalizer(obj metav1.Object) {

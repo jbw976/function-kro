@@ -15,6 +15,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"k8s.io/apiextensions-apiserver/pkg/generated/openapi"
@@ -83,4 +84,19 @@ func buildNamespacelessObjectMetaSchema(metaSchema spec.Schema) spec.Schema {
 		}
 	}
 	return cloned
+}
+
+// DeepCopySchema creates a deep copy of a spec.Schema by marshaling and
+// unmarshaling through JSON. This ensures all nested structures are fully
+// independent of the original.
+func DeepCopySchema(schema *spec.Schema) (*spec.Schema, error) {
+	data, err := json.Marshal(schema)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal schema: %w", err)
+	}
+	var copy spec.Schema
+	if err := json.Unmarshal(data, &copy); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal schema: %w", err)
+	}
+	return &copy, nil
 }

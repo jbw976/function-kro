@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -39,7 +40,8 @@ import (
 type Function struct {
 	fnv1.UnimplementedFunctionRunnerServiceServer
 
-	log logging.Logger
+	log       logging.Logger
+	rgdConfig graph.RGDConfig
 }
 
 // RunFunction runs the Function.
@@ -100,14 +102,14 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 
 	// Build the KRO graph using the schema resolver.
 	gb := graph.NewBuilder(resolver)
-	g, err := gb.NewResourceGraphDefinition(rg, xrSchema)
+	g, err := gb.NewResourceGraphDefinition(rg, xrSchema, f.rgdConfig)
 	if err != nil {
 		response.Fatal(rsp, errors.Wrap(err, "cannot create resource graph"))
 		return rsp, nil
 	}
 
 	// Create the KRO runtime from the graph and XR
-	rt, err := runtime.FromGraph(g, &oxr.Resource.Unstructured)
+	rt, err := runtime.FromGraph(g, &oxr.Resource.Unstructured, f.rgdConfig)
 	if err != nil {
 		response.Fatal(rsp, errors.Wrap(err, "cannot create graph runtime"))
 		return rsp, nil
@@ -190,7 +192,7 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 
 		// External refs are read-only and not managed by this function or Crossplane.
 		// Skip them from desired output.
-		if node.Spec.Meta.Type == graph.NodeTypeExternal {
+		if node.Spec.Meta.Type == graph.NodeTypeExternal || node.Spec.Meta.Type == graph.NodeTypeExternalCollection {
 			f.log.Debug("Not including external ref in desired resources", "id", id)
 			continue
 		}
@@ -245,9 +247,11 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 			readyState := resource.ReadyUnspecified
 			if len(node.Spec.ReadyWhen) > 0 {
 				readyState = resource.ReadyFalse
-				if isReady, err := node.IsReady(); err != nil {
-					f.log.Info("Error checking resource readiness", "id", id, "err", err)
-				} else if isReady {
+				if err := node.CheckReadiness(); err != nil {
+					if !stderrors.Is(err, runtime.ErrWaitingForReadiness) {
+						f.log.Info("Error checking resource readiness", "id", id, "err", err)
+					}
+				} else {
 					readyState = resource.ReadyTrue
 				}
 			}
@@ -475,8 +479,15 @@ func (f *Function) externalRefSelectorsFromRuntime(rt *runtime.Runtime, xrNamesp
 	selectors := make(map[string]*fnv1.ResourceSelector)
 
 	for _, node := range rt.Nodes() {
-		if node.Spec.Meta.Type != graph.NodeTypeExternal {
+		if node.Spec.Meta.Type != graph.NodeTypeExternal && node.Spec.Meta.Type != graph.NodeTypeExternalCollection {
 			// not an external ref, skip it
+			continue
+		}
+
+		if node.Spec.Meta.Type == graph.NodeTypeExternalCollection {
+			// TODO: Implement external collection selector support.
+			// This requires Crossplane's ResourceSelector to support label matching.
+			f.log.Debug("External collection selectors not yet implemented", "id", node.Spec.Meta.ID)
 			continue
 		}
 
@@ -562,7 +573,7 @@ func findCollectionNodeID(id string, nodesByID map[string]*runtime.Node) string 
 			return ""
 		}
 		prefix := id[:idx]
-		if node, ok := nodesByID[prefix]; ok && node.Spec.Meta.Type == graph.NodeTypeCollection {
+		if node, ok := nodesByID[prefix]; ok && (node.Spec.Meta.Type == graph.NodeTypeCollection || node.Spec.Meta.Type == graph.NodeTypeExternalCollection) {
 			// we found a collection node parent that matches the name prefix of this collection item
 			return prefix
 		}

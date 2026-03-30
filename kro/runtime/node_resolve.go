@@ -21,7 +21,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/crossplane-contrib/function-kro/kro/graph"
 	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
 	"github.com/crossplane-contrib/function-kro/kro/runtime/resolver"
 )
@@ -301,28 +300,5 @@ func (n *Node) exprSetsForVars(
 	return baseExprs, iterExprs
 }
 
-// normalizeNamespaces inherits the instance namespace onto namespaced children
-// that don't specify one. Cluster-scoped instances must resolve an explicit
-// namespace for namespaced children, otherwise reconciliation cannot safely
-// address them.
-func (n *Node) normalizeNamespaces(objs []*unstructured.Unstructured) error {
-	if !n.Spec.Meta.Namespaced {
-		return nil
-	}
-	ns := n.deps[graph.InstanceNodeID].observed[0].GetNamespace()
-	for _, obj := range objs {
-		if obj.GetNamespace() != "" {
-			continue
-		}
-		if ns == "" {
-			return fmt.Errorf(
-				"node %q is namespaced and must resolve metadata.namespace when the instance is cluster-scoped",
-				n.Spec.Meta.ID,
-			)
-		}
-		if obj.GetNamespace() == "" {
-			obj.SetNamespace(ns)
-		}
-	}
-	return nil
-}
+// NOTE: normalizeNamespaces removed — Crossplane handles namespace assignment
+// for composed resources at the framework level.

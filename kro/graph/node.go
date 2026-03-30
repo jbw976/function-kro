@@ -18,7 +18,6 @@ import (
 	"slices"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
 	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
@@ -90,10 +89,7 @@ type NodeMeta struct {
 	Index int
 	// Type identifies the kind of node (Resource, Collection, External, Instance).
 	Type NodeType
-	// GVR is the GroupVersionResource for this node's resources.
-	GVR schema.GroupVersionResource
-	// Namespaced indicates if the resource is namespace-scoped.
-	Namespaced bool
+	// NOTE: GVR and Namespaced removed — Crossplane manages resource identity and namespace scoping.
 	// Dependencies lists the IDs of nodes this node depends on.
 	Dependencies []string
 }
@@ -146,8 +142,6 @@ func (n *Node) DeepCopy() *Node {
 			ID:           n.Meta.ID,
 			Index:        n.Meta.Index,
 			Type:         n.Meta.Type,
-			GVR:          n.Meta.GVR,
-			Namespaced:   n.Meta.Namespaced,
 			Dependencies: slices.Clone(n.Meta.Dependencies),
 		},
 		IncludeWhen: slices.Clone(n.IncludeWhen),

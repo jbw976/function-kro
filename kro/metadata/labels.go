@@ -30,7 +30,7 @@ import (
 
 const (
 	// LabelKROPrefix is the label key prefix used to identify KRO owned resources.
-	LabelKROPrefix = v1alpha1.KRODomainName + "/"
+	LabelKROPrefix = v1beta1.KRODomainName + "/"
 )
 
 const (

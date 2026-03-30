@@ -20,8 +20,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
-	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
+	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
+	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
 )
 
 // Well-known node/variable identifiers used in CEL expressions.

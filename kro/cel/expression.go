@@ -20,7 +20,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/kubernetes-sigs/kro/pkg/cel/conversion"
+	"github.com/crossplane-contrib/function-kro/kro/cel/conversion"
 )
 
 // Expression wraps a CEL expression with its compiled program and metadata.

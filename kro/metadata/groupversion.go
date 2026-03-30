@@ -22,7 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 
-	"github.com/kubernetes-sigs/kro/api/v1alpha1"
+	"github.com/crossplane-contrib/function-kro/input/v1beta1"
 )
 
 const (

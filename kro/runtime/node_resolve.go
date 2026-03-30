@@ -21,9 +21,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/kubernetes-sigs/kro/pkg/graph"
-	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
-	"github.com/kubernetes-sigs/kro/pkg/runtime/resolver"
+	"github.com/crossplane-contrib/function-kro/kro/graph"
+	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
+	"github.com/crossplane-contrib/function-kro/kro/runtime/resolver"
 )
 
 func (n *Node) hardResolveSingleResource(vars []*variable.ResourceField) ([]*unstructured.Unstructured, error) {

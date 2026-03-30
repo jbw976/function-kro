@@ -24,7 +24,7 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
-	"github.com/kubernetes-sigs/kro/pkg/cel/sentinels"
+	"github.com/crossplane-contrib/function-kro/kro/cel/sentinels"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )

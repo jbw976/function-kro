@@ -24,9 +24,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	"github.com/kubernetes-sigs/kro/pkg/graph"
-	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
-	"github.com/kubernetes-sigs/kro/pkg/runtime/resolver"
+	"github.com/crossplane-contrib/function-kro/kro/graph"
+	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
+	"github.com/crossplane-contrib/function-kro/kro/runtime/resolver"
 )
 
 // Node is the mutable runtime handle that wraps an immutable graph.Node.

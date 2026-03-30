@@ -18,7 +18,7 @@ import (
 	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	"github.com/kubernetes-sigs/kro/pkg/graph/dag"
+	"github.com/crossplane-contrib/function-kro/kro/graph/dag"
 )
 
 // Graph represents a processed ResourceGraphDefinition.

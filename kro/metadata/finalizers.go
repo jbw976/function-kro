@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"github.com/kubernetes-sigs/kro/api/v1alpha1"
+	"github.com/crossplane-contrib/function-kro/input/v1beta1"
 )
 
 const kroFinalizer = v1alpha1.KRODomainName + "/finalizer"

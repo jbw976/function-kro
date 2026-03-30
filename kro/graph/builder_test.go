@@ -33,17 +33,17 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	krov1alpha1 "github.com/kubernetes-sigs/kro/api/v1alpha1"
-	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
-	"github.com/kubernetes-sigs/kro/pkg/cel/ast"
+	krov1alpha1 "github.com/crossplane-contrib/function-kro/input/v1beta1"
+	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
+	"github.com/crossplane-contrib/function-kro/kro/cel/ast"
 
-	"github.com/kubernetes-sigs/kro/pkg/features"
-	"github.com/kubernetes-sigs/kro/pkg/graph/fieldpath"
-	"github.com/kubernetes-sigs/kro/pkg/graph/parser"
-	graphschema "github.com/kubernetes-sigs/kro/pkg/graph/schema"
-	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
-	"github.com/kubernetes-sigs/kro/pkg/testutil/generator"
-	"github.com/kubernetes-sigs/kro/pkg/testutil/k8s"
+	"github.com/crossplane-contrib/function-kro/kro/features"
+	"github.com/crossplane-contrib/function-kro/kro/graph/fieldpath"
+	"github.com/crossplane-contrib/function-kro/kro/graph/parser"
+	graphschema "github.com/crossplane-contrib/function-kro/kro/graph/schema"
+	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
+	"github.com/crossplane-contrib/function-kro/kro/testutil/generator"
+	"github.com/crossplane-contrib/function-kro/kro/testutil/k8s"
 )
 
 func TestMain(m *testing.M) {

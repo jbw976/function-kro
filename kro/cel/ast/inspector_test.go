@@ -24,7 +24,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
+	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
 )
 
 func TestInspector_InspectionResults(t *testing.T) {

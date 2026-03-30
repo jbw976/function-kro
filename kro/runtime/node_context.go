@@ -21,8 +21,8 @@ import (
 	"k8s.io/apiserver/pkg/cel/openapi"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	celunstructured "github.com/kubernetes-sigs/kro/pkg/cel/unstructured"
-	"github.com/kubernetes-sigs/kro/pkg/graph"
+	celunstructured "github.com/crossplane-contrib/function-kro/kro/cel/unstructured"
+	"github.com/crossplane-contrib/function-kro/kro/graph"
 )
 
 // buildContext builds the CEL activation context from node dependencies.

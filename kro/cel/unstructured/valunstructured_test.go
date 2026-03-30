@@ -32,7 +32,7 @@ import (
 	"k8s.io/apiserver/pkg/cel/openapi"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	testk8s "github.com/kubernetes-sigs/kro/pkg/testutil/k8s"
+	testk8s "github.com/crossplane-contrib/function-kro/kro/testutil/k8s"
 )
 
 func schema(typ string) *openapi.Schema {

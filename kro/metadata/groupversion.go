@@ -18,14 +18,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gobuffalo/flect"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 
-	"github.com/crossplane-contrib/function-kro/input/v1beta1"
+	"github.com/kubernetes-sigs/kro/api/v1alpha1"
 )
 
 const (
-	KROInstancesGroupSuffix = v1beta1.KRODomainName
+	KROInstancesGroupSuffix = v1alpha1.KRODomainName
 )
 
 // ExtractGVKFromUnstructured extracts the GroupVersionKind from an unstructured object.
@@ -64,4 +65,11 @@ func ExtractGVKFromUnstructured(unstructured map[string]interface{}) (schema.Gro
 	}, nil
 }
 
-
+func GetResourceGraphDefinitionInstanceGVR(group, apiVersion, kind string) schema.GroupVersionResource {
+	pluralKind := flect.Pluralize(strings.ToLower(kind))
+	return schema.GroupVersionResource{
+		Group:    group,
+		Version:  apiVersion,
+		Resource: pluralKind,
+	}
+}

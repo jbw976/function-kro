@@ -19,14 +19,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"github.com/crossplane-contrib/function-kro/input/v1beta1"
+	"github.com/kubernetes-sigs/kro/api/v1alpha1"
 )
 
-const kroFinalizer = v1beta1.KRODomainName + "/finalizer"
+const kroFinalizer = v1alpha1.KRODomainName + "/finalizer"
 
 // SetResourceGraphDefinitionFinalizer adds the kro finalizer to the object if it's not already present.
 func SetResourceGraphDefinitionFinalizer(obj metav1.Object) {
 	if !HasResourceGraphDefinitionFinalizer(obj) {
+		obj.SetFinalizers(append(obj.GetFinalizers(), kroFinalizer))
+	}
+}
+
+// SetGraphRevisionFinalizer adds the kro finalizer to the object if it's not already present.
+func SetGraphRevisionFinalizer(obj metav1.Object) {
+	if !HasGraphRevisionFinalizer(obj) {
 		obj.SetFinalizers(append(obj.GetFinalizers(), kroFinalizer))
 	}
 }
@@ -36,8 +43,18 @@ func RemoveResourceGraphDefinitionFinalizer(obj metav1.Object) {
 	obj.SetFinalizers(removeString(obj.GetFinalizers(), kroFinalizer))
 }
 
+// RemoveGraphRevisionFinalizer removes the kro finalizer from the object.
+func RemoveGraphRevisionFinalizer(obj metav1.Object) {
+	obj.SetFinalizers(removeString(obj.GetFinalizers(), kroFinalizer))
+}
+
 // HasResourceGraphDefinitionFinalizer checks if the object has the kro finalizer.
 func HasResourceGraphDefinitionFinalizer(obj metav1.Object) bool {
+	return containsString(obj.GetFinalizers(), kroFinalizer)
+}
+
+// HasGraphRevisionFinalizer checks if the object has the kro finalizer.
+func HasGraphRevisionFinalizer(obj metav1.Object) bool {
 	return containsString(obj.GetFinalizers(), kroFinalizer)
 }
 

@@ -37,7 +37,6 @@ import (
 	"github.com/crossplane-contrib/function-kro/kro/graph/fieldpath"
 	"github.com/crossplane-contrib/function-kro/kro/graph/parser"
 	"github.com/crossplane-contrib/function-kro/kro/graph/schema"
-	kroschema "github.com/crossplane-contrib/function-kro/kro/graph/schema"
 	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
 	"github.com/crossplane-contrib/function-kro/kro/metadata"
 )
@@ -1153,7 +1152,7 @@ func getSchemaWithoutStatus(s *spec.Schema) (*spec.Schema, error) {
 	if s == nil {
 		return nil, nil
 	}
-	schemaCopy, err := kroschema.DeepCopySchema(s)
+	schemaCopy, err := schema.DeepCopySchema(s)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deep copy schema: %w", err)
 	}

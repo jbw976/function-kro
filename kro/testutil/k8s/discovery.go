@@ -508,37 +508,93 @@ func NewFakeResolver() (*FakeResolver, *fake.FakeDiscovery) {
 		{
 			GroupVersion: "ec2.services.k8s.aws/v1alpha1",
 			APIResources: []metav1.APIResource{
-				{Name: "vpcs", Namespaced: true, Kind: "VPC", Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
-				{Name: "subnets", Namespaced: true, Kind: "Subnet", Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
-				{Name: "securitygroups", Namespaced: true, Kind: "SecurityGroup", Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+				{
+					Name:       "vpcs",
+					Namespaced: true,
+					Kind:       "VPC",
+					Verbs:      []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+				},
+				{
+					Name:       "subnets",
+					Namespaced: true,
+					Kind:       "Subnet",
+					Verbs:      []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+				},
+				{
+					Name:       "securitygroups",
+					Namespaced: true,
+					Kind:       "SecurityGroup",
+					Verbs:      []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+				},
 			},
 		},
 		{
 			GroupVersion: "iam.services.k8s.aws/v1alpha1",
 			APIResources: []metav1.APIResource{
-				{Name: "policies", Namespaced: true, Kind: "Policy", Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
-				{Name: "roles", Namespaced: true, Kind: "Role", Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+				{
+					Name:       "policies",
+					Namespaced: true,
+					Kind:       "Policy",
+					Verbs:      []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+				},
+				{
+					Name:       "roles",
+					Namespaced: true,
+					Kind:       "Role",
+					Verbs:      []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+				},
 			},
 		},
 		{
 			GroupVersion: "eks.services.k8s.aws/v1alpha1",
 			APIResources: []metav1.APIResource{
-				{Name: "clusters", Namespaced: true, Kind: "Cluster", Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
-				{Name: "nodegroups", Namespaced: true, Kind: "Nodegroup", Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+				{
+					Name:       "clusters",
+					Namespaced: true,
+					Kind:       "Cluster",
+					Verbs:      []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+				},
+				{
+					Name:       "nodegroups",
+					Namespaced: true,
+					Kind:       "Nodegroup",
+					Verbs:      []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+				},
 			},
 		},
 		{
 			GroupVersion: "v1",
 			APIResources: []metav1.APIResource{
-				{Name: "pods", Namespaced: true, Kind: "Pod", Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
-				{Name: "configmaps", Namespaced: true, Kind: "ConfigMap", Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
-				{Name: "resourcequotas", Namespaced: true, Kind: "ResourceQuota", Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+				{
+					Name:       "pods",
+					Namespaced: true,
+					Kind:       "Pod",
+					Verbs:      []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+				},
+				{
+					Name:       "configmaps",
+					Namespaced: true,
+					Kind:       "ConfigMap",
+					Verbs:      []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+				},
+				{
+					Name:       "resourcequotas",
+					Namespaced: true,
+					Kind:       "ResourceQuota",
+					Verbs:      []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+				},
 			},
 		},
+		// CRD
 		{
 			GroupVersion: "apiextensions.k8s.io/v1",
 			APIResources: []metav1.APIResource{
-				{Name: "customresourcedefinitions", Namespaced: false, Kind: "CustomResourceDefinition", Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+				{
+					Name:       "customresourcedefinitions",
+					Namespaced: false,
+					Kind:       "CustomResourceDefinition",
+					Verbs:      []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+				},
 			},
 		},
 	}
@@ -546,7 +602,9 @@ func NewFakeResolver() (*FakeResolver, *fake.FakeDiscovery) {
 	return &FakeResolver{schemas: schemas}, fakeDiscovery
 }
 
-// quantitySchema returns the OpenAPI v3 representation of resource.Quantity.
+// quantitySchema returns the OpenAPI v3 representation of resource.Quantity
+// as served by the Kubernetes API server: oneOf string|number with no
+// top-level type and no x-kubernetes-int-or-string extension.
 func quantitySchema() spec.Schema {
 	return spec.Schema{
 		SchemaProps: spec.SchemaProps{
@@ -558,7 +616,7 @@ func quantitySchema() spec.Schema {
 	}
 }
 
-// resourceListSchema returns a map[string]Quantity schema.
+// resourceListSchema returns a map[string]Quantity schema (e.g. ResourceQuota.spec.hard).
 func resourceListSchema() spec.Schema {
 	qs := quantitySchema()
 	return spec.Schema{
@@ -572,6 +630,7 @@ func resourceListSchema() spec.Schema {
 	}
 }
 
+// Helper to create AWS tags schema
 func awsTagsSchema() spec.Schema {
 	return spec.Schema{
 		SchemaProps: spec.SchemaProps{
@@ -591,27 +650,94 @@ func awsTagsSchema() spec.Schema {
 	}
 }
 
+// Helper to create common metadata schema that matches Kubernetes ObjectMeta
 func metadataSchema() spec.Schema {
 	return spec.Schema{
 		SchemaProps: spec.SchemaProps{
 			Type: []string{"object"},
 			Properties: map[string]spec.Schema{
-				"name":                       {SchemaProps: spec.SchemaProps{Type: []string{"string"}}},
-				"namespace":                  {SchemaProps: spec.SchemaProps{Type: []string{"string"}}},
-				"labels":                     stringMapSchema(),
-				"annotations":                stringMapSchema(),
-				"generateName":               {SchemaProps: spec.SchemaProps{Type: []string{"string"}}},
-				"uid":                        {SchemaProps: spec.SchemaProps{Type: []string{"string"}}},
-				"resourceVersion":            {SchemaProps: spec.SchemaProps{Type: []string{"string"}}},
-				"generation":                 {SchemaProps: spec.SchemaProps{Type: []string{"integer"}}},
-				"creationTimestamp":           {SchemaProps: spec.SchemaProps{Type: []string{"string"}, Format: "date-time"}},
-				"deletionTimestamp":           {SchemaProps: spec.SchemaProps{Type: []string{"string"}, Format: "date-time"}},
-				"deletionGracePeriodSeconds": {SchemaProps: spec.SchemaProps{Type: []string{"integer"}}},
+				"name": {
+					SchemaProps: spec.SchemaProps{
+						Type: []string{"string"},
+					},
+				},
+				"namespace": {
+					SchemaProps: spec.SchemaProps{
+						Type: []string{"string"},
+					},
+				},
+				"labels": {
+					SchemaProps: spec.SchemaProps{
+						Type: []string{"object"},
+						AdditionalProperties: &spec.SchemaOrBool{
+							Allows: true,
+							Schema: &spec.Schema{
+								SchemaProps: spec.SchemaProps{
+									Type: []string{"string"},
+								},
+							},
+						},
+					},
+				},
+				"annotations": {
+					SchemaProps: spec.SchemaProps{
+						Type: []string{"object"},
+						AdditionalProperties: &spec.SchemaOrBool{
+							Allows: true,
+							Schema: &spec.Schema{
+								SchemaProps: spec.SchemaProps{
+									Type: []string{"string"},
+								},
+							},
+						},
+					},
+				},
+				"generateName": {
+					SchemaProps: spec.SchemaProps{
+						Type: []string{"string"},
+					},
+				},
+				"uid": {
+					SchemaProps: spec.SchemaProps{
+						Type: []string{"string"},
+					},
+				},
+				"resourceVersion": {
+					SchemaProps: spec.SchemaProps{
+						Type: []string{"string"},
+					},
+				},
+				"generation": {
+					SchemaProps: spec.SchemaProps{
+						Type: []string{"integer"},
+					},
+				},
+				"creationTimestamp": {
+					SchemaProps: spec.SchemaProps{
+						Type:   []string{"string"},
+						Format: "date-time",
+					},
+				},
+				"deletionTimestamp": {
+					SchemaProps: spec.SchemaProps{
+						Type:   []string{"string"},
+						Format: "date-time",
+					},
+				},
+				"deletionGracePeriodSeconds": {
+					SchemaProps: spec.SchemaProps{
+						Type: []string{"integer"},
+					},
+				},
 				"finalizers": {
 					SchemaProps: spec.SchemaProps{
 						Type: []string{"array"},
 						Items: &spec.SchemaOrArray{
-							Schema: &spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"string"}}},
+							Schema: &spec.Schema{
+								SchemaProps: spec.SchemaProps{
+									Type: []string{"string"},
+								},
+							},
 						},
 					},
 				},
@@ -623,12 +749,36 @@ func metadataSchema() spec.Schema {
 								SchemaProps: spec.SchemaProps{
 									Type: []string{"object"},
 									Properties: map[string]spec.Schema{
-										"apiVersion":         {SchemaProps: spec.SchemaProps{Type: []string{"string"}}},
-										"kind":               {SchemaProps: spec.SchemaProps{Type: []string{"string"}}},
-										"name":               {SchemaProps: spec.SchemaProps{Type: []string{"string"}}},
-										"uid":                {SchemaProps: spec.SchemaProps{Type: []string{"string"}}},
-										"controller":         {SchemaProps: spec.SchemaProps{Type: []string{"boolean"}}},
-										"blockOwnerDeletion": {SchemaProps: spec.SchemaProps{Type: []string{"boolean"}}},
+										"apiVersion": {
+											SchemaProps: spec.SchemaProps{
+												Type: []string{"string"},
+											},
+										},
+										"kind": {
+											SchemaProps: spec.SchemaProps{
+												Type: []string{"string"},
+											},
+										},
+										"name": {
+											SchemaProps: spec.SchemaProps{
+												Type: []string{"string"},
+											},
+										},
+										"uid": {
+											SchemaProps: spec.SchemaProps{
+												Type: []string{"string"},
+											},
+										},
+										"controller": {
+											SchemaProps: spec.SchemaProps{
+												Type: []string{"boolean"},
+											},
+										},
+										"blockOwnerDeletion": {
+											SchemaProps: spec.SchemaProps{
+												Type: []string{"boolean"},
+											},
+										},
 									},
 								},
 							},
@@ -640,18 +790,7 @@ func metadataSchema() spec.Schema {
 	}
 }
 
-func stringMapSchema() spec.Schema {
-	return spec.Schema{
-		SchemaProps: spec.SchemaProps{
-			Type: []string{"object"},
-			AdditionalProperties: &spec.SchemaOrBool{
-				Allows: true,
-				Schema: &spec.Schema{SchemaProps: spec.SchemaProps{Type: []string{"string"}}},
-			},
-		},
-	}
-}
-
+// Helper to merge two schema maps
 func mergeSchemas(a, b map[string]spec.Schema) map[string]spec.Schema {
 	merged := make(map[string]spec.Schema)
 	for k, v := range a {

@@ -8,7 +8,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/durationpb"
-	"k8s.io/utils/ptr"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 
@@ -629,7 +628,7 @@ func TestRunFunction(t *testing.T) {
 								ApiVersion: "v1",
 								Kind:       "ConfigMap",
 								Match:      &fnv1.ResourceSelector_MatchName{MatchName: "platform-config"},
-								Namespace:  ptr.To("xr-ns"),
+								Namespace:  new("xr-ns"),
 							},
 						},
 					},
@@ -754,7 +753,7 @@ func TestRunFunction(t *testing.T) {
 								ApiVersion: "v1",
 								Kind:       "ConfigMap",
 								Match:      &fnv1.ResourceSelector_MatchName{MatchName: "my-platform-config"},
-								Namespace:  ptr.To("xr-ns"),
+								Namespace:  new("xr-ns"),
 							},
 						},
 					},

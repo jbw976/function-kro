@@ -5,10 +5,9 @@
 package v1alpha1
 
 import (
+	"github.com/kubernetes-sigs/kro/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-
-	"github.com/kubernetes-sigs/kro/api/v1alpha1"
 )
 
 // This isn't a custom resource, in the sense that we never install its CRD.

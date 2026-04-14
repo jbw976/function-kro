@@ -7,6 +7,7 @@ import (
 	"maps"
 	"strings"
 
+	"github.com/kubernetes-sigs/kro/api/v1alpha1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -28,8 +29,6 @@ import (
 	"github.com/crossplane/function-sdk-go/resource/composed"
 	"github.com/crossplane/function-sdk-go/resource/composite"
 	"github.com/crossplane/function-sdk-go/response"
-
-	"github.com/kubernetes-sigs/kro/api/v1alpha1"
 
 	input "github.com/crossplane-contrib/function-kro/input/v1alpha1"
 	"github.com/crossplane-contrib/function-kro/kro/graph"

@@ -15,8 +15,8 @@ import (
 	"github.com/crossplane/function-sdk-go/resource"
 	"github.com/crossplane/function-sdk-go/response"
 
-	"github.com/crossplane-contrib/function-kro/kro/features"
-	"github.com/crossplane-contrib/function-kro/kro/graph"
+	"github.com/kubernetes-sigs/kro/pkg/features"
+	"github.com/kubernetes-sigs/kro/pkg/graph"
 )
 
 // buildSchema creates an OpenAPI v3 schema with standard apiVersion, kind, and

@@ -6,8 +6,8 @@ import (
 
 	"github.com/crossplane/function-sdk-go"
 
-	"github.com/crossplane-contrib/function-kro/kro/features"
-	"github.com/crossplane-contrib/function-kro/kro/graph"
+	"github.com/kubernetes-sigs/kro/pkg/features"
+	"github.com/kubernetes-sigs/kro/pkg/graph"
 )
 
 // CLI of this Function.

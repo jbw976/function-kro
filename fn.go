@@ -30,11 +30,12 @@ import (
 	"github.com/crossplane/function-sdk-go/resource/composite"
 	"github.com/crossplane/function-sdk-go/response"
 
+	"github.com/kubernetes-sigs/kro/pkg/graph"
+	"github.com/kubernetes-sigs/kro/pkg/metadata"
+	"github.com/kubernetes-sigs/kro/pkg/runtime"
+
 	input "github.com/crossplane-contrib/function-kro/input/v1alpha1"
-	"github.com/crossplane-contrib/function-kro/kro/graph"
-	schemaresolver "github.com/crossplane-contrib/function-kro/kro/graph/schema/resolver"
-	"github.com/crossplane-contrib/function-kro/kro/metadata"
-	"github.com/crossplane-contrib/function-kro/kro/runtime"
+	"github.com/crossplane-contrib/function-kro/internal/kroext"
 )
 
 // Function returns whatever response you ask it to.
@@ -96,9 +97,35 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 		return rsp, nil
 	}
 
-	// Build the KRO graph using the schema resolver.
-	gb := graph.NewBuilder(resolver)
-	g, err := gb.NewResourceGraphDefinition(rg, xrSchema, f.rgdConfig)
+	// Translate function-kro's input.ResourceGraph into upstream KRO's
+	// v1alpha1.ResourceGraphDefinition. The XR schema already provides the
+	// instance spec shape, so we don't populate Schema.Spec/Types here; we
+	// still have to set Kind/APIVersion/Group because upstream's validator
+	// requires a valid UpperCamelCase kind name. We synthesize them from the
+	// XR GVK.
+	rgd, err := resourceGraphToRGD(rg, xrGVK)
+	if err != nil {
+		response.Fatal(rsp, errors.Wrap(err, "cannot translate input ResourceGraph"))
+		return rsp, nil
+	}
+
+	// Upstream takes the instance's spec schema as *extv1.JSONSchemaProps.
+	// The XR schema resolved above is a full *spec.Schema wrapping the whole
+	// CRD object (apiVersion/kind/metadata/spec/status). Extract just the
+	// "spec" property and convert via JSON round-trip since there's no
+	// exported spec.Schema -> JSONSchemaProps converter.
+	instanceSpecSchema, err := xrSpecAsJSONSchemaProps(xrSchema)
+	if err != nil {
+		response.Fatal(rsp, errors.Wrap(err, "cannot convert XR spec schema"))
+		return rsp, nil
+	}
+
+	// Build the KRO graph using the schema resolver. We pass nil for the
+	// restMapper because the function has no direct API access — GVR and
+	// resource scope are not needed when Crossplane is the one applying the
+	// resources.
+	gb := graph.NewBuilder(resolver, nil)
+	g, err := gb.NewResourceGraphDefinition(rgd, instanceSpecSchema, f.rgdConfig)
 	if err != nil {
 		response.Fatal(rsp, errors.Wrap(err, "cannot create resource graph"))
 		return rsp, nil
@@ -309,8 +336,8 @@ func (f *Function) buildResolverFromSchemas(req *fnv1.RunFunctionRequest, gvks [
 	}
 
 	// Create the schema map resolver
-	schemaMapResolver := schemaresolver.NewSchemaMapResolver(schemas)
-	combinedResolver := schemaresolver.NewCombinedResolverFromSchemas(schemaMapResolver)
+	schemaMapResolver := kroext.NewSchemaMapResolver(schemas)
+	combinedResolver := kroext.NewCombinedResolverFromSchemas(schemaMapResolver)
 
 	// Get XR schema from the combined resolver.
 	xrSchema, err := combinedResolver.ResolveSchema(xrGVK)
@@ -373,11 +400,11 @@ func (f *Function) buildResolverFromCRDs(req *fnv1.RunFunctionRequest, gvks []sc
 	}
 
 	// Create combined resolver from CRDs.
-	crdResolver, err := schemaresolver.NewCRDSchemaResolver(crds)
+	crdResolver, err := kroext.NewCRDSchemaResolver(crds)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "cannot create schema resolver from CRDs")
 	}
-	combinedResolver := schemaresolver.NewCombinedResolverFromCRDs(crdResolver)
+	combinedResolver := kroext.NewCombinedResolverFromCRDs(crdResolver)
 
 	// Get XR schema from the combined resolver.
 	xrSchema, err := combinedResolver.ResolveSchema(xrGVK)
@@ -696,4 +723,62 @@ func structToSpecSchema(s *structpb.Struct) (*spec.Schema, error) {
 	}
 
 	return schema, nil
+}
+
+// resourceGraphToRGD translates our input.ResourceGraph into an upstream KRO
+// ResourceGraphDefinition. The upstream builder owns validation, CEL extraction,
+// and graph construction; we just reshape our input to what it expects.
+//
+// The upstream Schema struct carries Kind/APIVersion/Group that a standalone
+// KRO controller uses to synthesize a CRD. A Crossplane composition function
+// doesn't synthesize a CRD — Crossplane already owns XR identity — but
+// upstream's validator still requires a valid UpperCamelCase Kind, so we fill
+// it from the XR's own GVK. Spec/Types/Scope are left empty because the
+// caller passes the instance spec schema directly to the builder.
+func resourceGraphToRGD(rg *input.ResourceGraph, xrGVK schema.GroupVersionKind) (*v1alpha1.ResourceGraphDefinition, error) {
+	if rg == nil {
+		return nil, errors.New("input ResourceGraph is nil")
+	}
+	return &v1alpha1.ResourceGraphDefinition{
+		Spec: v1alpha1.ResourceGraphDefinitionSpec{
+			Schema: &v1alpha1.Schema{
+				Kind:       xrGVK.Kind,
+				APIVersion: xrGVK.Version,
+				Group:      xrGVK.Group,
+				Status:     rg.Status,
+			},
+			Resources: rg.Resources,
+		},
+	}, nil
+}
+
+// xrSpecAsJSONSchemaProps extracts the "spec" subschema from a full XR schema
+// and converts it to extv1.JSONSchemaProps for the upstream builder, which
+// wraps it internally (adding apiVersion/kind/metadata).
+//
+// Upstream has an exported JSONSchemaProps -> spec.Schema converter but not
+// the reverse, so we round-trip through JSON. This is fine for a per-request
+// path but is a real friction point for consumers migrating from the Crossplane
+// schema world (which speaks spec.Schema) into upstream (which speaks
+// JSONSchemaProps).
+func xrSpecAsJSONSchemaProps(xrSchema *spec.Schema) (*extv1.JSONSchemaProps, error) {
+	if xrSchema == nil {
+		return nil, errors.New("XR schema is nil")
+	}
+	specProp, ok := xrSchema.Properties["spec"]
+	if !ok {
+		// Return an empty object schema so downstream CEL validation against
+		// ${schema.spec.*} still returns a clean "field not found" error
+		// rather than blowing up.
+		return &extv1.JSONSchemaProps{Type: "object"}, nil
+	}
+	data, err := json.Marshal(&specProp)
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot marshal XR spec schema")
+	}
+	out := &extv1.JSONSchemaProps{}
+	if err := json.Unmarshal(data, out); err != nil {
+		return nil, errors.Wrap(err, "cannot unmarshal into JSONSchemaProps")
+	}
+	return out, nil
 }

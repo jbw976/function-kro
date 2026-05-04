@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package resolver
+package kroext
 
 import (
 	"fmt"
@@ -21,7 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	kroschema "github.com/crossplane-contrib/function-kro/kro/graph/schema"
+	kroschema "github.com/kubernetes-sigs/kro/pkg/graph/schema"
 )
 
 // CRDSchemaResolver is a resolver.SchemaResolver backed by a set of CRDs.

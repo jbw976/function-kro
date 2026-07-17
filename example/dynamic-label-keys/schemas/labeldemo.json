@@ -1,0 +1,28 @@
+{
+  "openapi": "3.0.0",
+  "info": { "title": "example.crossplane.io", "version": "v1alpha1" },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "io.crossplane.example.v1alpha1.LabelDemo": {
+        "type": "object",
+        "properties": {
+          "apiVersion": { "type": "string" },
+          "kind": { "type": "string" },
+          "metadata": { "type": "object" },
+          "spec": {
+            "type": "object",
+            "properties": {
+              "environment": { "type": "string" },
+              "team": { "type": "string" },
+              "serviceID": { "type": "string" }
+            }
+          }
+        },
+        "x-kubernetes-group-version-kind": [
+          { "group": "example.crossplane.io", "version": "v1alpha1", "kind": "LabelDemo" }
+        ]
+      }
+    }
+  }
+}

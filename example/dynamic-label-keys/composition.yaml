@@ -1,0 +1,42 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: labeldemo
+spec:
+  compositeTypeRef:
+    apiVersion: example.crossplane.io/v1alpha1
+    kind: LabelDemo
+  mode: Pipeline
+  pipeline:
+  - step: kro-run
+    functionRef:
+      name: function-kro
+    input:
+      apiVersion: kro.fn.crossplane.io/v1alpha1
+      kind: ResourceGraph
+      resources:
+      - id: config
+        template:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            # Assign the whole labels map as a single CEL expression. Inside a
+            # CEL map literal the KEYS are themselves expressions, so a label key
+            # can be computed from the XR spec. Static keys can sit in the same
+            # literal. This is upstream KRO's whole-map assignment; it needs no
+            # changes to the vendored kro/ libraries.
+            labels: >-
+              ${{
+                "serviceid.example.crossplane.io/" + schema.spec.serviceID: "",
+                "team.example.crossplane.io/" + schema.spec.team: "owner",
+                "app.kubernetes.io/managed-by": "function-kro"
+              }}
+            annotations: >-
+              ${{
+                "example.crossplane.io/" + schema.spec.environment: "active"
+              }}
+          data:
+            environment: ${schema.spec.environment}
+  - step: auto-ready
+    functionRef:
+      name: function-auto-ready

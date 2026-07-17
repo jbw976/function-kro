@@ -1,0 +1,9 @@
+apiVersion: example.crossplane.io/v1alpha1
+kind: LabelDemo
+metadata:
+  name: demo
+  namespace: default
+spec:
+  environment: production
+  team: platform
+  serviceID: svc-42

@@ -23,6 +23,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/kubernetes-sigs/kro/api/v1alpha1"
+
+	input "github.com/crossplane-contrib/function-kro/input/v1alpha1"
 	"github.com/crossplane-contrib/function-kro/kro/cel/ast"
 	"github.com/crossplane-contrib/function-kro/kro/metadata"
 )
@@ -109,10 +111,7 @@ func isKROReservedWord(word string) bool {
 // validateResourceGraphDefinition validates the naming conventions of
 // the given resource graph definition, the resources defined in them, and the constraints
 // defined in rgdConfig for resource collections.
-func validateResourceGraphDefinition(rgd *v1alpha1.ResourceGraphDefinition, rgdConfig RGDConfig) error {
-	if !isValidKindName(rgd.Spec.Schema.Kind) {
-		return fmt.Errorf("%s: kind '%s' is not a valid KRO kind name: must be UpperCamelCase", ErrNamingConvention, rgd.Spec.Schema.Kind)
-	}
+func validateResourceGraphDefinition(rgd *input.ResourceGraph, rgdConfig RGDConfig) error {
 	err := validateResourceIDs(rgd)
 	if err != nil {
 		return fmt.Errorf("%s: %w", ErrNamingConvention, err)
@@ -120,10 +119,10 @@ func validateResourceGraphDefinition(rgd *v1alpha1.ResourceGraphDefinition, rgdC
 
 	// Validate forEach iterators after collecting all resource IDs
 	resourceIDs := sets.NewString()
-	for _, res := range rgd.Spec.Resources {
+	for _, res := range rgd.Resources {
 		resourceIDs.Insert(res.ID)
 	}
-	for _, res := range rgd.Spec.Resources {
+	for _, res := range rgd.Resources {
 		if err := validateForEachDimensions(res, resourceIDs, rgdConfig); err != nil {
 			return err
 		}
@@ -139,9 +138,9 @@ func validateResourceGraphDefinition(rgd *v1alpha1.ResourceGraphDefinition, rgdC
 // - The id should start with a lowercase letter.
 // - The id should only contain alphanumeric characters.
 // - Does not contain any special characters, underscores, or hyphens.
-func validateResourceIDs(rgd *v1alpha1.ResourceGraphDefinition) error {
+func validateResourceIDs(rgd *input.ResourceGraph) error {
 	seen := make(map[string]struct{})
-	for _, res := range rgd.Spec.Resources {
+	for _, res := range rgd.Resources {
 		if isKROReservedWord(res.ID) {
 			return fmt.Errorf("id %s is a reserved keyword in KRO", res.ID)
 		}
@@ -319,7 +318,7 @@ func validateTemplateConstraints(
 func validateIdentityFields(nodes map[string]*Node, inspector *ast.Inspector, isInstanceNamespaced bool) error {
 	for _, node := range nodes {
 		for _, v := range node.Variables {
-			if !isRequiredIdentityField(v.Path, node.Meta.Namespaced, isInstanceNamespaced) {
+			if !isRequiredIdentityField(v.Path, true, isInstanceNamespaced) {
 				continue
 			}
 			result, err := inspector.Inspect(v.Expression.Original)

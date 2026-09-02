@@ -27,6 +27,7 @@ import (
 	"k8s.io/apiserver/pkg/cel/openapi"
 
 	"github.com/kubernetes-sigs/kro/api/v1alpha1"
+
 	"github.com/crossplane-contrib/function-kro/kro/cel/library"
 	"github.com/crossplane-contrib/function-kro/kro/cel/unstructured"
 	"github.com/crossplane-contrib/function-kro/kro/graph"

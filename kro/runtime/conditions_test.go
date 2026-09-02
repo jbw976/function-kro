@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/kubernetes-sigs/kro/api/v1alpha1"
+
 	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
 	"github.com/crossplane-contrib/function-kro/kro/cel/library"
 	"github.com/crossplane-contrib/function-kro/kro/graph"

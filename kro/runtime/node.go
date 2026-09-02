@@ -262,14 +262,6 @@ func (n *Node) resolve(mode resolveMode) (result []*unstructured.Unstructured, e
 		return nil, err
 	}
 
-	// Normalize namespaces unless an external collection is intentionally using
-	// an empty namespace to list across all namespaces.
-	if n.Spec.Meta.Type != graph.NodeTypeInstance && n.Spec.Meta.Type != graph.NodeTypeExternalCollection {
-		if err = n.normalizeNamespaces(result); err != nil {
-			return nil, err
-		}
-	}
-
 	if mode != resolveIdentity {
 		n.desired = result
 	}

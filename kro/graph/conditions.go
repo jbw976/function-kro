@@ -21,6 +21,7 @@ import (
 	celast "github.com/google/cel-go/common/ast"
 
 	"github.com/kubernetes-sigs/kro/api/v1alpha1"
+
 	"github.com/crossplane-contrib/function-kro/kro/cel/library"
 )
 

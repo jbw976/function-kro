@@ -16,66 +16,37 @@ package graph
 
 import (
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 
 	"github.com/google/cel-go/cel"
 	"golang.org/x/exp/maps"
-	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	apiservercel "k8s.io/apiserver/pkg/cel"
 	"k8s.io/apiserver/pkg/cel/openapi/resolver"
-	"k8s.io/client-go/rest"
 	"k8s.io/kube-openapi/pkg/validation/spec"
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	"github.com/kubernetes-sigs/kro/api/v1alpha1"
+
+	input "github.com/crossplane-contrib/function-kro/input/v1alpha1"
 	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
 	"github.com/crossplane-contrib/function-kro/kro/cel/ast"
 	"github.com/crossplane-contrib/function-kro/kro/cel/conversion"
 	"github.com/crossplane-contrib/function-kro/kro/cel/library"
 	"github.com/crossplane-contrib/function-kro/kro/features"
-	"github.com/crossplane-contrib/function-kro/kro/graph/crd"
 	"github.com/crossplane-contrib/function-kro/kro/graph/dag"
 	"github.com/crossplane-contrib/function-kro/kro/graph/fieldpath"
 	"github.com/crossplane-contrib/function-kro/kro/graph/parser"
 	"github.com/crossplane-contrib/function-kro/kro/graph/schema"
-	schemaresolver "github.com/crossplane-contrib/function-kro/kro/graph/schema/resolver"
 	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
 	"github.com/crossplane-contrib/function-kro/kro/metadata"
-	"github.com/crossplane-contrib/function-kro/kro/simpleschema"
 )
 
-// NewBuilder creates a new Builder. By default it uses CombinedResolver for
-// schema resolution and DynamicRESTMapper for resource discovery. Both can be
-// overridden with BuilderOptions.
-func NewBuilder(clientConfig *rest.Config, httpClient *http.Client, opts ...BuilderOption) (*Builder, error) {
-	b := &Builder{}
-	for _, opt := range opts {
-		opt(b)
-	}
-
-	if b.schemaResolver == nil {
-		sr, err := schemaresolver.NewCombinedResolver(clientConfig, httpClient)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create schema resolver: %w", err)
-		}
-		b.schemaResolver = sr
-	}
-
-	if b.restMapper == nil {
-		rm, err := apiutil.NewDynamicRESTMapper(clientConfig, httpClient)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create dynamic REST mapper: %w", err)
-		}
-		b.restMapper = rm
-	}
-
-	return b, nil
+// NewBuilder creates a new Builder backed by the given schema resolver.
+func NewBuilder(schemaResolver resolver.SchemaResolver) *Builder {
+	return &Builder{schemaResolver: schemaResolver}
 }
 
 // Builder is an object that is responsible for constructing and managing
@@ -104,20 +75,6 @@ func NewBuilder(clientConfig *rest.Config, httpClient *http.Client, opts ...Buil
 type Builder struct {
 	// schemaResolver is used to resolve the OpenAPI schema for the resources.
 	schemaResolver resolver.SchemaResolver
-	restMapper     meta.RESTMapper
-}
-
-// BuilderOption is an option for configuring a Builder.
-type BuilderOption func(*Builder)
-
-// WithSchemaResolver allows configuring a custom SchemaResolver for a Builder.
-func WithSchemaResolver(r resolver.SchemaResolver) BuilderOption {
-	return func(b *Builder) { b.schemaResolver = r }
-}
-
-// WithRESTMapper allows configuring a custom RESTMapper for a Builder.
-func WithRESTMapper(rm meta.RESTMapper) BuilderOption {
-	return func(b *Builder) { b.restMapper = rm }
 }
 
 // RGDConfig holds RGD runtime configuration parameters.
@@ -130,10 +87,10 @@ type RGDConfig struct {
 // CRD. The ResourceGraphDefinition object is a fully processed and validated representation
 // of the resource graph definition CRD, it's underlying resources, and the relationships between
 // the resources.
-func (b *Builder) NewResourceGraphDefinition(originalCR *v1alpha1.ResourceGraphDefinition, rgdConfig RGDConfig) (*Graph, error) {
-	// Before anything else, let's copy the resource graph definition to avoid modifying the
+func (b *Builder) NewResourceGraphDefinition(rg *input.ResourceGraph, xrSchema *spec.Schema, rgdConfig RGDConfig) (*Graph, error) {
+	// Before anything else, let's copy the resource graph to avoid modifying the
 	// original object.
-	rgd := originalCR.DeepCopy()
+	rgd := rg.DeepCopy()
 
 	// There are a few steps to build a resource graph definition:
 	// 1. Validate the naming convention of the resource graph definition and its resources.
@@ -147,13 +104,9 @@ func (b *Builder) NewResourceGraphDefinition(originalCR *v1alpha1.ResourceGraphD
 		return nil, fmt.Errorf("failed to validate resourcegraphdefinition: %w", err)
 	}
 
-	// Determine CRD scope from the schema definition. Defaults to NamespaceScoped
-	// to preserve backward compatibility.
-	crdScope := extv1.NamespaceScoped
-	if rgd.Spec.Schema.Scope == v1alpha1.ResourceScopeCluster {
-		crdScope = extv1.ClusterScoped
-	}
-	instanceNamespaced := crdScope == extv1.NamespaceScoped
+	// Crossplane owns the XR CRD and its scope, so from the graph's point of view
+	// the instance is always namespaced.
+	instanceNamespaced := true
 
 	// Now that we did a basic validation of the resource graph definition, we can start understanding
 	// the resources that are part of the resource graph definition.
@@ -175,9 +128,9 @@ func (b *Builder) NewResourceGraphDefinition(originalCR *v1alpha1.ResourceGraphD
 	// Schemas are only needed during build for CEL validation.
 	nodes := make(map[string]*Node)
 	schemas := make(map[string]*spec.Schema)
-	for i, rgResource := range rgd.Spec.Resources {
+	for i, rgResource := range rgd.Resources {
 		id := rgResource.ID
-		node, nodeSchema, err := b.buildRGResource(p, rgResource, i, instanceNamespaced)
+		node, nodeSchema, err := b.buildRGResource(p, rgResource, i)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build resource %q: %w", id, err)
 		}
@@ -205,47 +158,9 @@ func (b *Builder) NewResourceGraphDefinition(originalCR *v1alpha1.ResourceGraphD
 
 	//
 
-	// Next, we need to understand the instance definition. The instance is
-	// the resource users will create in their cluster, to request the creation of
-	// the resources defined in the resource graph definition.
-	//
-	// The instance resource is a Kubernetes resource, differently from typical
-	// CRDs, users define the schema of the instance resource using the "SimpleSchema"
-	// format. This format is a simplified version of the OpenAPI schema, that only
-	// supports a subset of the features.
-	//
-	// SimpleSchema is a new standard we created to simplify CRD declarations, it is
-	// very useful when we need to define the Spec of a CRD, when it comes to defining
-	// the status of a CRD, we use CEL expressions. `kro` inspects the CEL expressions
-	// to infer the types of the status fields, and generate the OpenAPI schema for the
-	// status field. The CEL expressions are also used to patch the status field of the
-	// instance.
-	//
-	// We need to:
-	// 1. Parse the instance spec fields adhering to the SimpleSchema format.
-	// 2. Extract CEL expressions from the status
-	// 3. Validate them against the resources defined in the resource graph definition.
-	// 4. Infer the status schema based on the CEL expressions.
-
-	// Build instance spec schema from SimpleSchema.
-	// This is independent of resources - just YAML parsing.
-	instanceSpecSchema, err := buildInstanceSpecSchema(rgd.Spec.Schema)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build resourcegraphdefinition %q: %w", rgd.Name, err)
-	}
-
-	// Synthesize CRD early with empty status.
-	// We'll update the status later after inferring it from CEL expressions.
-	instanceCRD := crd.SynthesizeCRD(
-		rgd.Spec.Schema.Group,
-		rgd.Spec.Schema.APIVersion,
-		rgd.Spec.Schema.Kind,
-		*instanceSpecSchema,
-		extv1.JSONSchemaProps{}, // empty status placeholder
-		false,                   // don't add default fields yet
-		crdScope,
-		rgd.Spec.Schema,
-	)
+	// Upstream parses the instance spec from SimpleSchema and synthesizes a CRD
+	// here. Crossplane hands us the XR's OpenAPI schema directly and owns the CRD,
+	// so both steps are gone and xrSchema is the instance schema.
 
 	// Create a single expression inspector for all AST inspection operations.
 	// This uses a lightweight env that only declares identifier names (no full schemas) -
@@ -292,7 +207,7 @@ func (b *Builder) NewResourceGraphDefinition(originalCR *v1alpha1.ResourceGraphD
 	// This allows expressions like ${schema.spec.replicas} and ${deployment.status.replicas}.
 	// Note: only spec and metadata are included - status references are not allowed in RGDs.
 	celSchemas := collectNodeSchemas(schemaCache, nodes, schemas)
-	schemaWithoutStatus, err := getSchemaWithoutStatus(instanceCRD)
+	schemaWithoutStatus, err := getSchemaWithoutStatus(xrSchema)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema without status: %w", err)
 	}
@@ -324,21 +239,20 @@ func (b *Builder) NewResourceGraphDefinition(originalCR *v1alpha1.ResourceGraphD
 		}
 	}
 
-	// Build instance status schema.
-	// Status expressions reference resources and/or the instance's own schema.
-	// We infer the status field types from the CEL expression output types.
-	statusSchema, statusVariables, statusTemplate, conditionExprStrings, err := buildStatusSchema(
-		bc,
-		rgd.Spec.Schema,
+	// Parse the XR status expressions. Upstream also infers an OpenAPI schema for
+	// the status here to put in the CRD it synthesizes; Crossplane owns the XRD, so
+	// we only need the parsed expressions.
+	statusVariables, statusTemplate, conditionExprStrings, err := parseStatusExpressions(
+		rgd.Status.Raw,
 		nodeNames,
 		inspector,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build instance status schema: %w", err)
+		return nil, fmt.Errorf("failed to parse instance status: %w", err)
 	}
 
 	// Compile programs for status expressions in a separate pass.
-	// buildStatusSchema only parsed and type-checked; bc.compile reuses the
+	// parseStatusExpressions only parsed and type-checked; bc.compile reuses the
 	// cached checked ASTs, skipping redundant parse+check.
 	for _, fd := range statusVariables {
 		if _, err := bc.compile(bc.env, fd.Expression); err != nil {
@@ -351,15 +265,8 @@ func (b *Builder) NewResourceGraphDefinition(originalCR *v1alpha1.ResourceGraphD
 		return nil, fmt.Errorf("failed to build instance conditions: %w", err)
 	}
 
-	// Update the CRD with the inferred status schema.
-	crd.SetCRDStatus(instanceCRD, *statusSchema, true)
-
 	// Create the instance node with status variables for runtime patching.
 	instance, err := buildInstanceNode(
-		rgd.Spec.Schema.Group,
-		rgd.Spec.Schema.APIVersion,
-		rgd.Spec.Schema.Kind,
-		instanceNamespaced,
 		statusVariables,
 		statusTemplate,
 		conditions,
@@ -383,7 +290,6 @@ func (b *Builder) NewResourceGraphDefinition(originalCR *v1alpha1.ResourceGraphD
 		Nodes:            nodes,
 		Resources:        nodes,
 		TopologicalOrder: topologicalOrder,
-		CRD:              instanceCRD,
 		ResourceSchemas:  resourceSchemas,
 	}
 	return resourceGraphDefinition, nil
@@ -410,7 +316,6 @@ func (b *Builder) buildRGResource(
 	p *parser.Parser,
 	rgResource *v1alpha1.Resource,
 	order int,
-	instanceNamespaced bool,
 ) (*Node, *spec.Schema, error) {
 	// 1. Validate resource field combinations.
 	if err := validateCombinableResourceFields(rgResource); err != nil {
@@ -449,16 +354,11 @@ func (b *Builder) buildRGResource(
 		return nil, nil, fmt.Errorf("failed to get schema for resource %s: %w", rgResource.ID, err)
 	}
 
-	mapping, err := b.restMapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get REST mapping for resource %s: %w", rgResource.ID, err)
-	}
-	if err := validateTemplateConstraints(
-		rgResource,
-		resourceObject,
-		mapping.Scope.Name() == meta.RESTScopeNameNamespace,
-		instanceNamespaced,
-	); err != nil {
+	// Upstream asks the REST mapper for the resource's scope. We have no API
+	// access, so we treat every resource as namespaced under a namespaced
+	// instance, which reduces the scope checks to no-ops and leaves the
+	// kro-owned label validation.
+	if err := validateTemplateConstraints(rgResource, resourceObject, true, true); err != nil {
 		return nil, nil, err
 	}
 
@@ -531,11 +431,9 @@ func (b *Builder) buildRGResource(
 	// Note that dependencies are not set here - they're extracted later in buildDependencyGraph.
 	node := &Node{
 		Meta: NodeMeta{
-			ID:         rgResource.ID,
-			Index:      order,
-			Type:       nodeType,
-			GVR:        mapping.Resource,
-			Namespaced: mapping.Scope.Name() == meta.RESTScopeNameNamespace,
+			ID:    rgResource.ID,
+			Index: order,
+			Type:  nodeType,
 			// Dependencies will be set by buildDependencyGraph
 		},
 		Template:    &unstructured.Unstructured{Object: resourceObject},
@@ -664,18 +562,10 @@ func extractTemplateDependencies(
 
 		// Track iterators used in identity fields (name/namespace).
 		switch templateVariable.Path {
-		case MetadataNamePath:
+		case MetadataNamePath, MetadataNamespacePath:
 			for _, iter := range iteratorRefs {
 				if !slices.Contains(iteratorsInIdentity, iter) {
 					iteratorsInIdentity = append(iteratorsInIdentity, iter)
-				}
-			}
-		case MetadataNamespacePath:
-			if node.Meta.Namespaced {
-				for _, iter := range iteratorRefs {
-					if !slices.Contains(iteratorsInIdentity, iter) {
-						iteratorsInIdentity = append(iteratorsInIdentity, iter)
-					}
 				}
 			}
 		}
@@ -720,15 +610,11 @@ func extractForEachDependencies(
 // This is called after spec schema, status schema, and CRD have been built separately.
 // Uses the shared inspectorEnv for AST inspection.
 func buildInstanceNode(
-	group, apiVersion, kind string,
-	namespaced bool,
 	statusVariables []variable.FieldDescriptor,
 	statusTemplate map[string]interface{},
 	conditions []*krocel.Expression,
 	inspector *ast.Inspector,
 ) (*Node, error) {
-	gvr := metadata.GetResourceGraphDefinitionInstanceGVR(group, apiVersion, kind)
-
 	// Collect dependencies for instance status fields
 	var instanceDeps []string
 	instanceStatusVariables := []*variable.ResourceField{}
@@ -780,8 +666,6 @@ func buildInstanceNode(
 		Meta: NodeMeta{
 			ID:           InstanceNodeID,
 			Type:         NodeTypeInstance,
-			GVR:          gvr,
-			Namespaced:   namespaced,
 			Dependencies: instanceDeps,
 		},
 		Template: &unstructured.Unstructured{
@@ -796,58 +680,30 @@ func buildInstanceNode(
 	return instance, nil
 }
 
-// buildInstanceSpecSchema builds the instance spec schema that will be
-// used to generate the CRD for the instance resource. The instance spec
-// schema is expected to be defined using the "SimpleSchema" format.
-func buildInstanceSpecSchema(rgSchema *v1alpha1.Schema) (*extv1.JSONSchemaProps, error) {
-	// We need to unmarshal the instance schema to a map[string]interface{} to
-	// make it easier to work with.
-	instanceSpec := map[string]interface{}{}
-	err := yaml.UnmarshalStrict(rgSchema.Spec.Raw, &instanceSpec)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal spec schema: %w", err)
-	}
-
-	// Also the custom types must be unmarshalled to a map[string]interface{} to
-	// make handling easier.
-	customTypes := map[string]interface{}{}
-	err = yaml.UnmarshalStrict(rgSchema.Types.Raw, &customTypes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal predefined types: %w", err)
-	}
-
-	// The instance resource has a schema defined using the "SimpleSchema" format.
-	instanceSchema, err := simpleschema.ToOpenAPISpec(instanceSpec, customTypes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build OpenAPI schema for instance: %v", err)
-	}
-
-	return instanceSchema, nil
-}
-
-// buildStatusSchema builds the status schema for the instance resource.
-// The status schema is inferred from the CEL expressions in the status field
-// using CEL type checking. Uses the shared inspectorEnv for validation and
-// typed env for compilation.
+// parseStatusExpressions extracts the CEL expressions from the instance status
+// and validates what they are allowed to reference.
 //
-// Returns: (schema, fieldDescriptors, statusTemplate, conditionExprs, error)
-func buildStatusSchema(
-	bc *buildContext,
-	rgSchema *v1alpha1.Schema,
+// This is upstream's buildStatusSchema without the schema half. Upstream infers
+// an OpenAPI schema for the status from the CEL output types, to fill in the CRD
+// it synthesizes. Crossplane owns the XRD, so we keep only the parsed
+// expressions. They are still type-checked, by bc.compile in the caller.
+//
+// Returns: (fieldDescriptors, statusTemplate, conditionExprs, error)
+func parseStatusExpressions(
+	statusRaw []byte,
 	nodeNames []string,
 	inspector *ast.Inspector,
 ) (
-	*extv1.JSONSchemaProps,
 	[]variable.FieldDescriptor,
 	map[string]interface{},
 	[]string,
 	error,
 ) {
-	// The instance resource has a schema defined using the "SimpleSchema" format.
 	unstructuredStatus := map[string]interface{}{}
-	err := yaml.UnmarshalStrict(rgSchema.Status.Raw, &unstructuredStatus)
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("failed to unmarshal status schema: %w", err)
+	if len(statusRaw) > 0 {
+		if err := yaml.UnmarshalStrict(statusRaw, &unstructuredStatus); err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to unmarshal status: %w", err)
+		}
 	}
 
 	// Extract author-defined conditions before running CEL inference: the
@@ -857,17 +713,17 @@ func buildStatusSchema(
 	// the standard []metav1.Condition schema.
 	conditionExprs, err := extractConditionExpressions(unstructuredStatus)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("failed to extract conditions block: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to extract conditions block: %w", err)
 	}
 
 	// Extract CEL expressions from the status field.
 	fieldDescriptors, noExpressionFields, err := parser.ParseSchemalessResource(unstructuredStatus)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("failed to extract CEL expressions from status: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to extract CEL expressions from status: %w", err)
 	}
 
 	if len(noExpressionFields) > 0 {
-		return nil, nil, nil, nil, fmt.Errorf("status fields without expressions are not supported: %v", noExpressionFields)
+		return nil, nil, nil, fmt.Errorf("status fields without expressions are not supported: %v", noExpressionFields)
 	}
 
 	// Verify status expressions only reference known resources or schema, and populate References.
@@ -876,7 +732,7 @@ func buildStatusSchema(
 		expression := fieldDescriptor.Expression
 		result, err := inspectExpressionRestricted(inspector, expression.Original, allowedStatusVars)
 		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("status field %q expression %q: %w", fieldDescriptor.Path, expression.UserExpression(), err)
+			return nil, nil, nil, fmt.Errorf("status field %q expression %q: %w", fieldDescriptor.Path, expression.UserExpression(), err)
 		}
 		// Populate expression.References for restricted environment compilation
 		for _, dep := range result.ResourceDependencies {
@@ -886,28 +742,7 @@ func buildStatusSchema(
 		}
 	}
 
-	// Infer types for each status field expression using CEL type checking.
-	// Only parse and check here (no program compilation) — programs are compiled
-	// in a separate pass after buildStatusSchema returns.
-	statusTypeMap := make(map[string]*cel.Type)
-	for _, fieldDescriptor := range fieldDescriptors {
-		expression := fieldDescriptor.Expression
-
-		checkedAST, err := bc.parseAndCheck(bc.env, expression)
-		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("failed to type-check status expression %q at path %q: %w", expression.UserExpression(), fieldDescriptor.Path, err)
-		}
-
-		statusTypeMap[fieldDescriptor.Path] = checkedAST.OutputType()
-	}
-
-	// convert the CEL types to OpenAPI schema - best effort.
-	statusSchema, err := schema.GenerateSchemaFromCELTypes(statusTypeMap, bc.typeProvider)
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("failed to generate status schema from CEL types: %w", err)
-	}
-
-	return statusSchema, fieldDescriptors, unstructuredStatus, conditionExprs, nil
+	return fieldDescriptors, unstructuredStatus, conditionExprs, nil
 }
 
 // extractConditionExpressions removes the `conditions:` key from the raw
@@ -1520,39 +1355,22 @@ func validateAndCompileForEach(bc *buildContext, node *Node, inspector *ast.Insp
 	return iteratorTypes, nil
 }
 
-// getSchemaWithoutStatus extracts a spec.Schema from a CRD for CEL validation.
-// It includes spec and metadata but excludes status, since status references
-// are not allowed in RGD expressions. Cluster-scoped instance CRDs also omit
-// metadata.namespace so CEL cannot type-check references to a field that does
-// not exist at runtime.
-func getSchemaWithoutStatus(crd *extv1.CustomResourceDefinition) (*spec.Schema, error) {
-	if len(crd.Spec.Versions) != 1 {
-		return nil, fmt.Errorf("expected CRD to have exactly one version, got %d versions", len(crd.Spec.Versions))
+// getSchemaWithoutStatus returns a copy of the XR schema with the status
+// property removed, since status references are not allowed in RGD expressions.
+//
+// Upstream reads this out of the CRD it synthesized and injects an ObjectMeta
+// schema, namespace-less for cluster-scoped instances. We get the schema from
+// Crossplane with metadata already resolved, so there is nothing to inject.
+func getSchemaWithoutStatus(s *spec.Schema) (*spec.Schema, error) {
+	if s == nil {
+		return nil, nil
 	}
-	if crd.Spec.Versions[0].Schema == nil {
-		return nil, fmt.Errorf("expected CRD version to have schema defined")
-	}
-
-	// Copy the schema and remove status
-	openAPISchema := crd.Spec.Versions[0].Schema.OpenAPIV3Schema.DeepCopy()
-	delete(openAPISchema.Properties, "status")
-
-	specSchema, err := schema.ConvertJSONSchemaPropsToSpecSchema(openAPISchema)
+	schemaCopy, err := schema.DeepCopySchema(s)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to deep copy schema: %w", err)
 	}
-
-	// Add full ObjectMeta schema for CEL validation
-	if specSchema.Properties == nil {
-		specSchema.Properties = make(map[string]spec.Schema)
-	}
-	metadataSchema := schema.ObjectMetaSchema
-	if crd.Spec.Scope == extv1.ClusterScoped {
-		metadataSchema = schema.NamespacelessObjectMetaSchema
-	}
-	specSchema.Properties["metadata"] = metadataSchema
-
-	return specSchema, nil
+	delete(schemaCopy.Properties, "status")
+	return schemaCopy, nil
 }
 
 // collectNodeSchemas builds a map of node IDs to their OpenAPI schemas.

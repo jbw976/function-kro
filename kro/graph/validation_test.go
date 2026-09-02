@@ -26,6 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/kubernetes-sigs/kro/api/v1alpha1"
+
+	input "github.com/crossplane-contrib/function-kro/input/v1alpha1"
 	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
 	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
 )
@@ -33,51 +35,43 @@ import (
 func TestValidateRGResourceNames(t *testing.T) {
 	tests := []struct {
 		name        string
-		rgd         *v1alpha1.ResourceGraphDefinition
+		rgd         *input.ResourceGraph
 		expectError bool
 	}{
 		{
 			name: "Valid resource graph definition resource ids",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "validID1"},
-						{ID: "validID2"},
-					},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{ID: "validID1"},
+					{ID: "validID2"},
 				},
 			},
 			expectError: false,
 		},
 		{
 			name: "Duplicate resource ids",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "duplicateID"},
-						{ID: "duplicateID"},
-					},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{ID: "duplicateID"},
+					{ID: "duplicateID"},
 				},
 			},
 			expectError: true,
 		},
 		{
 			name: "Invalid resource ID",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "Invalid_ID"},
-					},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{ID: "Invalid_ID"},
 				},
 			},
 			expectError: true,
 		},
 		{
 			name: "Reserved word as resource id",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "spec"},
-					},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{ID: "spec"},
 				},
 			},
 			expectError: true,
@@ -269,50 +263,25 @@ func TestValidateResourceGraphDefinition(t *testing.T) {
 	}
 	tests := []struct {
 		name      string
-		rgd       *v1alpha1.ResourceGraphDefinition
+		rgd       *input.ResourceGraph
 		rgdConfig RGDConfig
 		wantErr   bool
 	}{
 		{
 			name: "Valid naming conventions",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "validResourceID"},
-					},
-					Schema: &v1alpha1.Schema{
-						Kind: "ValidKindName",
-					},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{ID: "validResourceID"},
 				},
 			},
 			rgdConfig: defaultRGDConfig,
 			wantErr:   false,
 		},
 		{
-			name: "Invalid kind name",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "validResourceID"},
-					},
-					Schema: &v1alpha1.Schema{
-						Kind: "invalidKindName",
-					},
-				},
-			},
-			rgdConfig: defaultRGDConfig,
-			wantErr:   true,
-		},
-		{
 			name: "Invalid resource ID",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "invalid_ResourceID"},
-					},
-					Schema: &v1alpha1.Schema{
-						Kind: "ValidKindName",
-					},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{ID: "invalid_ResourceID"},
 				},
 			},
 			rgdConfig: defaultRGDConfig,
@@ -320,18 +289,13 @@ func TestValidateResourceGraphDefinition(t *testing.T) {
 		},
 		{
 			name: "Invalid foreach iterator name",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{
-							ID: "validResourceID",
-							ForEach: []v1alpha1.ForEachDimension{
-								{"invalid_IteratorName": "b"},
-							},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{
+						ID: "validResourceID",
+						ForEach: []v1alpha1.ForEachDimension{
+							{"invalid_IteratorName": "b"},
 						},
-					},
-					Schema: &v1alpha1.Schema{
-						Kind: "ValidKindName",
 					},
 				},
 			},
@@ -417,21 +381,19 @@ func TestValidateForEachDimensions(t *testing.T) {
 	}
 	tests := []struct {
 		name        string
-		rgd         *v1alpha1.ResourceGraphDefinition
+		rgd         *input.ResourceGraph
 		rgdConfig   RGDConfig
 		expectError bool
 		errorMsg    string
 	}{
 		{
 			name: "Valid forEach iterator",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{
-							ID: "workers",
-							ForEach: []v1alpha1.ForEachDimension{
-								{"name": "${schema.spec.workers}"},
-							},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{
+						ID: "workers",
+						ForEach: []v1alpha1.ForEachDimension{
+							{"name": "${schema.spec.workers}"},
 						},
 					},
 				},
@@ -441,15 +403,13 @@ func TestValidateForEachDimensions(t *testing.T) {
 		},
 		{
 			name: "Valid multiple forEach iterators",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{
-							ID: "deployments",
-							ForEach: []v1alpha1.ForEachDimension{
-								{"region": "${schema.spec.regions}"},
-								{"tier": "${schema.spec.tiers}"},
-							},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{
+						ID: "deployments",
+						ForEach: []v1alpha1.ForEachDimension{
+							{"region": "${schema.spec.regions}"},
+							{"tier": "${schema.spec.tiers}"},
 						},
 					},
 				},
@@ -459,14 +419,12 @@ func TestValidateForEachDimensions(t *testing.T) {
 		},
 		{
 			name: "Invalid iterator name - not lowerCamelCase",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{
-							ID: "workers",
-							ForEach: []v1alpha1.ForEachDimension{
-								{"Invalid_Name": "${schema.spec.workers}"},
-							},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{
+						ID: "workers",
+						ForEach: []v1alpha1.ForEachDimension{
+							{"Invalid_Name": "${schema.spec.workers}"},
 						},
 					},
 				},
@@ -477,14 +435,12 @@ func TestValidateForEachDimensions(t *testing.T) {
 		},
 		{
 			name: "Iterator name is reserved keyword (schema)",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{
-							ID: "workers",
-							ForEach: []v1alpha1.ForEachDimension{
-								{"schema": "${schema.spec.workers}"},
-							},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{
+						ID: "workers",
+						ForEach: []v1alpha1.ForEachDimension{
+							{"schema": "${schema.spec.workers}"},
 						},
 					},
 				},
@@ -495,14 +451,12 @@ func TestValidateForEachDimensions(t *testing.T) {
 		},
 		{
 			name: "Iterator name 'each' is reserved for per-item readiness",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{
-							ID: "pods",
-							ForEach: []v1alpha1.ForEachDimension{
-								{"each": "${schema.spec.podNames}"},
-							},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{
+						ID: "pods",
+						ForEach: []v1alpha1.ForEachDimension{
+							{"each": "${schema.spec.podNames}"},
 						},
 					},
 				},
@@ -513,15 +467,13 @@ func TestValidateForEachDimensions(t *testing.T) {
 		},
 		{
 			name: "Iterator name conflicts with resource ID",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "database"},
-						{
-							ID: "backups",
-							ForEach: []v1alpha1.ForEachDimension{
-								{"database": "${schema.spec.databases}"},
-							},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{ID: "database"},
+					{
+						ID: "backups",
+						ForEach: []v1alpha1.ForEachDimension{
+							{"database": "${schema.spec.databases}"},
 						},
 					},
 				},
@@ -532,15 +484,13 @@ func TestValidateForEachDimensions(t *testing.T) {
 		},
 		{
 			name: "Duplicate iterator names in same resource",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{
-							ID: "workers",
-							ForEach: []v1alpha1.ForEachDimension{
-								{"name": "${schema.spec.workers}"},
-								{"name": "${schema.spec.otherWorkers}"},
-							},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{
+						ID: "workers",
+						ForEach: []v1alpha1.ForEachDimension{
+							{"name": "${schema.spec.workers}"},
+							{"name": "${schema.spec.otherWorkers}"},
 						},
 					},
 				},
@@ -551,20 +501,18 @@ func TestValidateForEachDimensions(t *testing.T) {
 		},
 		{
 			name: "Same iterator name in different resources is valid",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{
-							ID: "workers",
-							ForEach: []v1alpha1.ForEachDimension{
-								{"name": "${schema.spec.workers}"},
-							},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{
+						ID: "workers",
+						ForEach: []v1alpha1.ForEachDimension{
+							{"name": "${schema.spec.workers}"},
 						},
-						{
-							ID: "backups",
-							ForEach: []v1alpha1.ForEachDimension{
-								{"name": "${schema.spec.databases}"},
-							},
+					},
+					{
+						ID: "backups",
+						ForEach: []v1alpha1.ForEachDimension{
+							{"name": "${schema.spec.databases}"},
 						},
 					},
 				},
@@ -574,11 +522,9 @@ func TestValidateForEachDimensions(t *testing.T) {
 		},
 		{
 			name: "Resource without forEach is valid",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{ID: "deployment"},
-					},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{ID: "deployment"},
 				},
 			},
 			rgdConfig:   defaultRGDConfig,
@@ -586,14 +532,12 @@ func TestValidateForEachDimensions(t *testing.T) {
 		},
 		{
 			name: "Resource with more than max forEach dimensions",
-			rgd: &v1alpha1.ResourceGraphDefinition{
-				Spec: v1alpha1.ResourceGraphDefinitionSpec{
-					Resources: []*v1alpha1.Resource{
-						{
-							ID: "deployment",
-							ForEach: []v1alpha1.ForEachDimension{
-								{"a": "b"},
-							},
+			rgd: &input.ResourceGraph{
+				Resources: []*v1alpha1.Resource{
+					{
+						ID: "deployment",
+						ForEach: []v1alpha1.ForEachDimension{
+							{"a": "b"},
 						},
 					},
 				},
@@ -607,11 +551,11 @@ func TestValidateForEachDimensions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resourceIDs := sets.NewString()
-			for _, res := range tt.rgd.Spec.Resources {
+			for _, res := range tt.rgd.Resources {
 				resourceIDs.Insert(res.ID)
 			}
 			var err error
-			for _, res := range tt.rgd.Spec.Resources {
+			for _, res := range tt.rgd.Resources {
 				err = errors.Join(err, validateForEachDimensions(res, resourceIDs, tt.rgdConfig))
 			}
 			if (err != nil) != tt.expectError {
@@ -904,9 +848,9 @@ func TestValidateTemplateConstraints(t *testing.T) {
 func TestValidateIdentityFields(t *testing.T) {
 	inspector := newUnitInspector(t, "schema")
 
-	makeNode := func(id, path, expression string, namespaced bool) *Node {
+	makeNode := func(id, path, expression string) *Node {
 		return &Node{
-			Meta: NodeMeta{ID: id, Namespaced: namespaced},
+			Meta: NodeMeta{ID: id},
 			Variables: []*variable.ResourceField{
 				{
 					FieldDescriptor: variable.FieldDescriptor{
@@ -927,7 +871,7 @@ func TestValidateIdentityFields(t *testing.T) {
 		{
 			name: "omit on metadata.name is rejected",
 			nodes: map[string]*Node{
-				"cm": makeNode("cm", MetadataNamePath, "omit()", true),
+				"cm": makeNode("cm", MetadataNamePath, "omit()"),
 			},
 			isInstanceNamespaced: true,
 			wantErr:              "omit() cannot be used at path \"metadata.name\"",
@@ -935,7 +879,7 @@ func TestValidateIdentityFields(t *testing.T) {
 		{
 			name: "conditional omit on metadata.name is rejected",
 			nodes: map[string]*Node{
-				"cm": makeNode("cm", MetadataNamePath, `schema.spec.name != "" ? schema.spec.name : omit()`, true),
+				"cm": makeNode("cm", MetadataNamePath, `schema.spec.name != "" ? schema.spec.name : omit()`),
 			},
 			isInstanceNamespaced: true,
 			wantErr:              "omit() cannot be used at path \"metadata.name\"",
@@ -943,7 +887,7 @@ func TestValidateIdentityFields(t *testing.T) {
 		{
 			name: "omit on metadata.namespace rejected for namespaced resource with cluster-scoped instance",
 			nodes: map[string]*Node{
-				"cm": makeNode("cm", MetadataNamespacePath, "omit()", true),
+				"cm": makeNode("cm", MetadataNamespacePath, "omit()"),
 			},
 			isInstanceNamespaced: false,
 			wantErr:              "omit() cannot be used at path \"metadata.namespace\"",
@@ -951,28 +895,24 @@ func TestValidateIdentityFields(t *testing.T) {
 		{
 			name: "omit on metadata.namespace allowed for namespaced instance",
 			nodes: map[string]*Node{
-				"cm": makeNode("cm", MetadataNamespacePath, "omit()", true),
+				"cm": makeNode("cm", MetadataNamespacePath, "omit()"),
 			},
 			isInstanceNamespaced: true,
 		},
-		{
-			name: "omit on metadata.namespace allowed for cluster-scoped resource",
-			nodes: map[string]*Node{
-				"crb": makeNode("crb", MetadataNamespacePath, "omit()", false),
-			},
-			isInstanceNamespaced: false,
-		},
+		// Upstream also covers "omit on metadata.namespace allowed for cluster-scoped
+		// resource". That case needs a per-resource scope, which validateIdentityFields
+		// no longer has: without a REST mapper every resource is treated as namespaced.
 		{
 			name: "omit on non-required field is allowed",
 			nodes: map[string]*Node{
-				"cm": makeNode("cm", "spec.someField", "omit()", true),
+				"cm": makeNode("cm", "spec.someField", "omit()"),
 			},
 			isInstanceNamespaced: true,
 		},
 		{
 			name: "omit on metadata.name rejected for cluster-scoped instance",
 			nodes: map[string]*Node{
-				"cm": makeNode("cm", MetadataNamePath, "omit()", true),
+				"cm": makeNode("cm", MetadataNamePath, "omit()"),
 			},
 			isInstanceNamespaced: false,
 			wantErr:              "omit() cannot be used at path \"metadata.name\"",
@@ -980,7 +920,7 @@ func TestValidateIdentityFields(t *testing.T) {
 		{
 			name: "non-omit expression on metadata.name is allowed",
 			nodes: map[string]*Node{
-				"cm": makeNode("cm", MetadataNamePath, `"my-resource"`, true),
+				"cm": makeNode("cm", MetadataNamePath, `"my-resource"`),
 			},
 			isInstanceNamespaced: true,
 		},

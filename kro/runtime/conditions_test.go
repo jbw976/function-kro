@@ -24,9 +24,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/kubernetes-sigs/kro/api/v1alpha1"
-	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
-	"github.com/kubernetes-sigs/kro/pkg/cel/library"
-	"github.com/kubernetes-sigs/kro/pkg/graph"
+	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
+	"github.com/crossplane-contrib/function-kro/kro/cel/library"
+	"github.com/crossplane-contrib/function-kro/kro/graph"
 )
 
 func compileConditionExpr(t *testing.T, expr string) *krocel.Expression {

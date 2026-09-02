@@ -27,9 +27,9 @@ import (
 	"k8s.io/apiserver/pkg/cel/openapi"
 
 	"github.com/kubernetes-sigs/kro/api/v1alpha1"
-	"github.com/kubernetes-sigs/kro/pkg/cel/library"
-	"github.com/kubernetes-sigs/kro/pkg/cel/unstructured"
-	"github.com/kubernetes-sigs/kro/pkg/graph"
+	"github.com/crossplane-contrib/function-kro/kro/cel/library"
+	"github.com/crossplane-contrib/function-kro/kro/cel/unstructured"
+	"github.com/crossplane-contrib/function-kro/kro/graph"
 )
 
 // ErrConditionEvaluationDegraded indicates that one or more author condition

@@ -22,8 +22,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kubernetes-sigs/kro/pkg/cel/conversion"
-	"github.com/kubernetes-sigs/kro/pkg/cel/sentinels"
+	"github.com/crossplane-contrib/function-kro/kro/cel/conversion"
+	"github.com/crossplane-contrib/function-kro/kro/cel/sentinels"
 )
 
 func TestOmit(t *testing.T) {

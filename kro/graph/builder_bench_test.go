@@ -22,8 +22,8 @@ import (
 	"k8s.io/client-go/restmapper"
 
 	krov1alpha1 "github.com/kubernetes-sigs/kro/api/v1alpha1"
-	"github.com/kubernetes-sigs/kro/pkg/testutil/generator"
-	"github.com/kubernetes-sigs/kro/pkg/testutil/k8s"
+	"github.com/crossplane-contrib/function-kro/kro/testutil/generator"
+	"github.com/crossplane-contrib/function-kro/kro/testutil/k8s"
 )
 
 // newBenchBuilder creates a Builder with fake resolvers for benchmarking.

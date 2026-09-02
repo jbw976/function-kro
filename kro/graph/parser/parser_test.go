@@ -21,9 +21,9 @@ import (
 
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
-	schemacache "github.com/kubernetes-sigs/kro/pkg/graph/schema"
-	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
+	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
+	schemacache "github.com/crossplane-contrib/function-kro/kro/graph/schema"
+	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
 )
 
 // newSchema creates a spec.Schema with properly initialized VendorExtensible

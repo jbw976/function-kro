@@ -23,7 +23,7 @@ import (
 	"k8s.io/apiserver/pkg/cel/openapi/resolver"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	"github.com/kubernetes-sigs/kro/pkg/metrics"
+	"github.com/crossplane-contrib/function-kro/kro/metrics"
 )
 
 // TTLCachedSchemaResolver caches schemas with LRU eviction and time-based expiration

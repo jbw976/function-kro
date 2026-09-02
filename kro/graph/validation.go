@@ -23,8 +23,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/kubernetes-sigs/kro/api/v1alpha1"
-	"github.com/kubernetes-sigs/kro/pkg/cel/ast"
-	"github.com/kubernetes-sigs/kro/pkg/metadata"
+	"github.com/crossplane-contrib/function-kro/kro/cel/ast"
+	"github.com/crossplane-contrib/function-kro/kro/metadata"
 )
 
 var (

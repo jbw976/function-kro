@@ -18,8 +18,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/kubernetes-sigs/kro/pkg/graph"
-	"github.com/kubernetes-sigs/kro/pkg/metrics"
+	"github.com/crossplane-contrib/function-kro/kro/graph"
+	"github.com/crossplane-contrib/function-kro/kro/metrics"
 )
 
 // CheckReadiness evaluates readyWhen expressions using observed state.

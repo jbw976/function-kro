@@ -17,9 +17,9 @@ package resolver
 import (
 	"fmt"
 
-	"github.com/kubernetes-sigs/kro/pkg/cel/sentinels"
-	"github.com/kubernetes-sigs/kro/pkg/graph/fieldpath"
-	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
+	"github.com/crossplane-contrib/function-kro/kro/cel/sentinels"
+	"github.com/crossplane-contrib/function-kro/kro/graph/fieldpath"
+	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
 )
 
 // ResolutionResult represents the result of resolving a single expression.

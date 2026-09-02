@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"strings"
 
-	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
+	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
 )
 
 // UnwrapExpressions takes a list of CEL expressions wrapped in ${...} (e.g.

@@ -17,7 +17,7 @@ package runtime
 import (
 	"fmt"
 
-	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
+	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
 )
 
 // evalExprAny evaluates an expression using its pre-compiled Program and caches the result.

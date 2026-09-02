@@ -23,10 +23,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/kubernetes-sigs/kro/api/v1alpha1"
-
-	input "github.com/crossplane-contrib/function-kro/input/v1alpha1"
-	"github.com/crossplane-contrib/function-kro/kro/cel/ast"
-	"github.com/crossplane-contrib/function-kro/kro/metadata"
+	"github.com/kubernetes-sigs/kro/pkg/cel/ast"
+	"github.com/kubernetes-sigs/kro/pkg/metadata"
 )
 
 var (
@@ -108,35 +106,54 @@ func isKROReservedWord(word string) bool {
 	return reservedKeyWords.Has(word)
 }
 
-// validateResourceIDs validates the naming conventions of the resource IDs
-// and the forEach constraints defined in rgdConfig.
-// In function-kro, we skip Kind validation since Crossplane manages the XR CRD.
-func validateResourceIDs(rgd *input.ResourceGraph, rgdConfig RGDConfig) error {
-	seen := make(map[string]struct{})
-	for _, res := range rgd.Resources {
-		if isKROReservedWord(res.ID) {
-			return fmt.Errorf("%s: id %s is a reserved keyword in KRO", ErrNamingConvention, res.ID)
-		}
-
-		if !isValidResourceID(res.ID) {
-			return fmt.Errorf("%s: id %s is not a valid KRO resource id: must be lower camelCase", ErrNamingConvention, res.ID)
-		}
-
-		if _, ok := seen[res.ID]; ok {
-			return fmt.Errorf("%s: found duplicate resource IDs %s", ErrNamingConvention, res.ID)
-		}
-		seen[res.ID] = struct{}{}
+// validateResourceGraphDefinition validates the naming conventions of
+// the given resource graph definition, the resources defined in them, and the constraints
+// defined in rgdConfig for resource collections.
+func validateResourceGraphDefinition(rgd *v1alpha1.ResourceGraphDefinition, rgdConfig RGDConfig) error {
+	if !isValidKindName(rgd.Spec.Schema.Kind) {
+		return fmt.Errorf("%s: kind '%s' is not a valid KRO kind name: must be UpperCamelCase", ErrNamingConvention, rgd.Spec.Schema.Kind)
+	}
+	err := validateResourceIDs(rgd)
+	if err != nil {
+		return fmt.Errorf("%s: %w", ErrNamingConvention, err)
 	}
 
 	// Validate forEach iterators after collecting all resource IDs
 	resourceIDs := sets.NewString()
-	for _, res := range rgd.Resources {
+	for _, res := range rgd.Spec.Resources {
 		resourceIDs.Insert(res.ID)
 	}
-	for _, res := range rgd.Resources {
+	for _, res := range rgd.Spec.Resources {
 		if err := validateForEachDimensions(res, resourceIDs, rgdConfig); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// validateResource performs basic validation on a given resourcegraphdefinition.
+// It checks that there are no duplicate resource ids and that the
+// resource ids are conformant to the KRO naming convention.
+//
+// The KRO naming convention is as follows:
+// - The id should start with a lowercase letter.
+// - The id should only contain alphanumeric characters.
+// - Does not contain any special characters, underscores, or hyphens.
+func validateResourceIDs(rgd *v1alpha1.ResourceGraphDefinition) error {
+	seen := make(map[string]struct{})
+	for _, res := range rgd.Spec.Resources {
+		if isKROReservedWord(res.ID) {
+			return fmt.Errorf("id %s is a reserved keyword in KRO", res.ID)
+		}
+
+		if !isValidResourceID(res.ID) {
+			return fmt.Errorf("id %s is not a valid KRO resource id: must be lower camelCase", res.ID)
+		}
+
+		if _, ok := seen[res.ID]; ok {
+			return fmt.Errorf("found duplicate resource IDs %s", res.ID)
+		}
+		seen[res.ID] = struct{}{}
 	}
 
 	return nil
@@ -302,8 +319,7 @@ func validateTemplateConstraints(
 func validateIdentityFields(nodes map[string]*Node, inspector *ast.Inspector, isInstanceNamespaced bool) error {
 	for _, node := range nodes {
 		for _, v := range node.Variables {
-			// NOTE: Always assume namespaced — Crossplane manages resource scope.
-			if !isRequiredIdentityField(v.Path, true, isInstanceNamespaced) {
+			if !isRequiredIdentityField(v.Path, node.Meta.Namespaced, isInstanceNamespaced) {
 				continue
 			}
 			result, err := inspector.Inspect(v.Expression.Original)

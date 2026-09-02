@@ -633,9 +633,7 @@ Based on the v0.9.0 audit, these are all files we modify from upstream:
 | `kro/graph/schema/schema.go` | Add `DeepCopySchema` |
 | `kro/runtime/node.go` | Remove `normalizeNamespaces` call |
 | `kro/runtime/node_resolve.go` | Remove `normalizeNamespaces` method |
-| `kro/metadata/finalizers.go` | Import path change |
-| `kro/metadata/labels.go` | Import path change |
-| `kro/metadata/groupversion.go` | Import path change; remove `GetResourceGraphDefinitionInstanceGVR` |
+| `kro/metadata/groupversion.go` | Remove `GetResourceGraphDefinitionInstanceGVR` |
 | `kro/testutil/generator/resourcegraphdefinition.go` | Adapted for our input types; added `BuildTestXRSchema` |
 
 ### Files We Intentionally Exclude

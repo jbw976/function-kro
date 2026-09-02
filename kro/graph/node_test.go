@@ -20,9 +20,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
-	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
+	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
+	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
 )
 
 func TestNodeTypeString(t *testing.T) {
@@ -46,6 +47,49 @@ func TestNodeTypeString(t *testing.T) {
 	}
 }
 
+func TestNodeMeta_AddDependency(t *testing.T) {
+	tests := []struct {
+		name     string
+		deps     []string
+		expected []string
+	}{
+		{
+			name:     "no duplicates",
+			deps:     []string{"a", "b", "c"},
+			expected: []string{"a", "b", "c"},
+		},
+		{
+			name:     "all duplicates",
+			deps:     []string{"a", "a", "a"},
+			expected: []string{"a"},
+		},
+		{
+			name:     "interleaved duplicates",
+			deps:     []string{"a", "b", "a", "c", "b", "c"},
+			expected: []string{"a", "b", "c"},
+		},
+		{
+			name:     "single dependency",
+			deps:     []string{"x"},
+			expected: []string{"x"},
+		},
+		{
+			name:     "empty",
+			deps:     nil,
+			expected: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &NodeMeta{}
+			for _, dep := range tt.deps {
+				m.addDependency(dep)
+			}
+			assert.Equal(t, tt.expected, m.Dependencies)
+		})
+	}
+}
+
 func TestNodeDeepCopy(t *testing.T) {
 	var nilNode *Node
 	assert.Nil(t, nilNode.DeepCopy())
@@ -55,6 +99,8 @@ func TestNodeDeepCopy(t *testing.T) {
 			ID:           "vpc",
 			Index:        3,
 			Type:         NodeTypeCollection,
+			GVR:          schema.GroupVersionResource{Group: "ec2.services.k8s.aws", Version: "v1alpha1", Resource: "vpcs"},
+			Namespaced:   true,
 			Dependencies: []string{"network"},
 		},
 		Template: &unstructured.Unstructured{

@@ -24,9 +24,11 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	"github.com/crossplane-contrib/function-kro/kro/graph"
-	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
-	"github.com/crossplane-contrib/function-kro/kro/runtime/resolver"
+	"github.com/kubernetes-sigs/kro/pkg/metrics"
+
+	"github.com/kubernetes-sigs/kro/pkg/graph"
+	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
+	"github.com/kubernetes-sigs/kro/pkg/runtime/resolver"
 )
 
 // Node is the mutable runtime handle that wraps an immutable graph.Node.
@@ -47,6 +49,11 @@ type Node struct {
 	templateExprs    []*expressionEvaluationState
 	templateVars     []*variable.ResourceField
 
+	// conditionExprs are the per-reconcile evaluation states for the
+	// instance's author-defined `conditions:` expressions. Only the
+	// instance node populates this; resource nodes leave it nil.
+	conditionExprs []*expressionEvaluationState
+
 	rgdConfig graph.RGDConfig
 
 	// resourceSchema is the OpenAPI schema for this node's resource type.
@@ -54,9 +61,23 @@ type Node struct {
 	resourceSchema *spec.Schema
 }
 
-var identityPaths = []string{
-	"metadata.name",
-	"metadata.namespace",
+// defaultIdentityPaths are the template field paths used to identify most resource types.
+var defaultIdentityPaths = []string{"metadata.name", "metadata.namespace"}
+
+// identityPathsOverride specifies non-default identity paths for specific node types.
+// Most resources use name and namespace; only special cases need an override.
+var identityPathsOverride = map[graph.NodeType][]string{
+	// External collections have no name; the selector is their identity.
+	graph.NodeTypeExternalCollection: {"metadata.namespace", "metadata.selector"},
+}
+
+// identityPathsForNodeType returns the template field path prefixes that should
+// be resolved when getting a node's identity for observation or deletion.
+func identityPathsForNodeType(nodeType graph.NodeType) []string {
+	if override, ok := identityPathsOverride[nodeType]; ok {
+		return override
+	}
+	return defaultIdentityPaths
 }
 
 // resolveMode controls how template resolution behaves.
@@ -85,7 +106,7 @@ func (n *Node) IsIgnored() (bool, error) {
 		return false, nil
 	}
 
-	nodeIgnoredCheckTotal.Inc()
+	metrics.NodeIgnoredCheckTotal.Inc()
 
 	// Check if any dependency is ignored (contagious).
 	for _, dep := range n.deps {
@@ -94,7 +115,7 @@ func (n *Node) IsIgnored() (bool, error) {
 			return false, err
 		}
 		if ignored {
-			nodeIgnoredTotal.Inc()
+			metrics.NodeIgnoredTotal.Inc()
 			return true, nil
 		}
 	}
@@ -150,7 +171,7 @@ func (n *Node) IsIgnored() (bool, error) {
 			return false, fmt.Errorf("includeWhen %q: %w", expr.Expression.UserExpression(), err)
 		}
 		if !val {
-			nodeIgnoredTotal.Inc()
+			metrics.NodeIgnoredTotal.Inc()
 			return true, nil
 		}
 	}
@@ -191,10 +212,10 @@ func (n *Node) resolve(mode resolveMode) (result []*unstructured.Unstructured, e
 	startTime := time.Now()
 	defer func() {
 		duration := time.Since(startTime)
-		nodeEvalDuration.Observe(duration.Seconds())
-		nodeEvalTotal.Inc()
+		metrics.NodeEvalDuration.Observe(duration.Seconds())
+		metrics.NodeEvalTotal.Inc()
 		if err != nil {
-			nodeEvalErrorsTotal.Inc()
+			metrics.NodeEvalErrorsTotal.Inc()
 		}
 	}()
 
@@ -217,7 +238,7 @@ func (n *Node) resolve(mode resolveMode) (result []*unstructured.Unstructured, e
 	// Select vars based on mode.
 	vars := n.templateVars
 	if mode == resolveIdentity {
-		vars = n.templateVarsForPaths(identityPaths)
+		vars = n.templateVarsForPaths(identityPathsForNodeType(n.Spec.Meta.Type))
 	}
 
 	switch n.Spec.Meta.Type {
@@ -232,10 +253,6 @@ func (n *Node) resolve(mode resolveMode) (result []*unstructured.Unstructured, e
 	case graph.NodeTypeResource, graph.NodeTypeExternal:
 		result, err = n.hardResolveSingleResource(vars)
 	case graph.NodeTypeExternalCollection:
-		if mode == resolveIdentity {
-			// External collections have no identity to resolve; they use selectors.
-			return nil, nil
-		}
 		result, err = n.hardResolveSingleResource(vars)
 	default:
 		panic(fmt.Sprintf("unknown node type: %v", n.Spec.Meta.Type))
@@ -245,8 +262,13 @@ func (n *Node) resolve(mode resolveMode) (result []*unstructured.Unstructured, e
 		return nil, err
 	}
 
-	// NOTE: normalizeNamespaces removed — Crossplane handles namespace assignment
-	// for composed resources at the framework level.
+	// Normalize namespaces unless an external collection is intentionally using
+	// an empty namespace to list across all namespaces.
+	if n.Spec.Meta.Type != graph.NodeTypeInstance && n.Spec.Meta.Type != graph.NodeTypeExternalCollection {
+		if err = n.normalizeNamespaces(result); err != nil {
+			return nil, err
+		}
+	}
 
 	if mode != resolveIdentity {
 		n.desired = result

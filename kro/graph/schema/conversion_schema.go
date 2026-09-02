@@ -17,9 +17,10 @@ package schema
 import (
 	"fmt"
 
-	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
 	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/kube-openapi/pkg/validation/spec"
+
+	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
 )
 
 // ConvertJSONSchemaPropsToSpecSchema converts an extv1.JSONSchemaProps to a spec.Schema.
@@ -33,8 +34,9 @@ func ConvertJSONSchemaPropsToSpecSchema(props *extv1.JSONSchemaProps) (*spec.Sch
 		return nil, nil
 	}
 
-	var externalDocs *spec.ExternalDocumentation = nil
+	var externalDocs *spec.ExternalDocumentation
 	if props.ExternalDocs != nil {
+		externalDocs = &spec.ExternalDocumentation{}
 		if props.ExternalDocs.URL != "" {
 			externalDocs.URL = props.ExternalDocs.URL
 		}

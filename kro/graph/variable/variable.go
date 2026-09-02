@@ -15,7 +15,7 @@
 package variable
 
 import (
-	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
+	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
 )
 
 // FieldDescriptor represents a field in a resource template that contains CEL expressions.

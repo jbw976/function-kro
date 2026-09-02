@@ -23,7 +23,7 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 
-	"github.com/crossplane-contrib/function-kro/kro/cel/conversion"
+	"github.com/kubernetes-sigs/kro/pkg/cel/conversion"
 )
 
 // JSON returns a CEL library that provides JSON parsing functions.

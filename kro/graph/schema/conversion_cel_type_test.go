@@ -18,14 +18,14 @@ import (
 	"testing"
 
 	"github.com/google/cel-go/cel"
-	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiservercel "k8s.io/apiserver/pkg/cel"
 	"k8s.io/apiserver/pkg/cel/openapi"
 	"k8s.io/kube-openapi/pkg/validation/spec"
-	"k8s.io/utils/ptr"
+
+	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
 )
 
 func TestInferSchemaFromCELType_Primitives(t *testing.T) {
@@ -131,6 +131,7 @@ func TestInferSchemaFromCELType_Collections(t *testing.T) {
 		})
 	}
 }
+
 func TestGenerateSchemaFromCELTypes_Timestamp(t *testing.T) {
 	typeMap := map[string]*cel.Type{
 		"ts": cel.TimestampType,
@@ -215,7 +216,7 @@ func TestGenerateSchemaFromCELTypes_Complex(t *testing.T) {
 						},
 					},
 					"extra": {
-						XPreserveUnknownFields: ptr.To(true),
+						XPreserveUnknownFields: new(true),
 					},
 				},
 			},

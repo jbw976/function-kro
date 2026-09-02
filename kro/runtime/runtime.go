@@ -19,9 +19,10 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
-	"github.com/crossplane-contrib/function-kro/kro/graph"
-	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
+	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
+	"github.com/kubernetes-sigs/kro/pkg/graph"
+	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
+	"github.com/kubernetes-sigs/kro/pkg/metrics"
 )
 
 // Compile-time check: Runtime must implement Interface.
@@ -52,8 +53,8 @@ func FromGraph(g *graph.Graph, instance *unstructured.Unstructured, rgdConfig gr
 	startTime := time.Now()
 	defer func() {
 		duration := time.Since(startTime)
-		runtimeCreationDuration.Observe(duration.Seconds())
-		runtimeCreationTotal.Inc()
+		metrics.RuntimeCreationDuration.Observe(duration.Seconds())
+		metrics.RuntimeCreationTotal.Inc()
 	}()
 	instanceObj := instance.DeepCopy()
 
@@ -124,6 +125,9 @@ func FromGraph(g *graph.Graph, instance *unstructured.Unstructured, rgdConfig gr
 	}
 
 	// Wire up instance node dependencies.
+	// Status expressions may reference the instance's own schema, so the instance
+	// node is always wired as a dep of itself.
+	instNode.deps[graph.InstanceNodeID] = instNode
 	for _, depID := range instNode.Spec.Meta.Dependencies {
 		if dep, ok := rt.nodes[depID]; ok {
 			instNode.deps[depID] = dep
@@ -161,6 +165,12 @@ func FromGraph(g *graph.Graph, instance *unstructured.Unstructured, rgdConfig gr
 		instNode.templateVars = append(instNode.templateVars, v)
 		state := getOrCreateExpr(v.Expression, v.Kind, v.Expression.References)
 		instNode.templateExprs = append(instNode.templateExprs, state)
+	}
+
+	// Each condition Expression carries its own References, populated by the builder.
+	for _, expr := range instNode.Spec.Conditions {
+		state := getOrCreateExpr(expr, variable.ResourceVariableKindDynamic, expr.References)
+		instNode.conditionExprs = append(instNode.conditionExprs, state)
 	}
 
 	return rt, nil

@@ -21,9 +21,9 @@ import (
 
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
-	schemacache "github.com/crossplane-contrib/function-kro/kro/graph/schema"
-	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
+	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
+	schemacache "github.com/kubernetes-sigs/kro/pkg/graph/schema"
+	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
 )
 
 // newSchema creates a spec.Schema with properly initialized VendorExtensible
@@ -448,6 +448,7 @@ func TestTypeMismatches(t *testing.T) {
 		})
 	}
 }
+
 func TestParseWithExpectedSchema(t *testing.T) {
 	resource := map[string]interface{}{
 		"stringField": "${string.value}",
@@ -486,24 +487,23 @@ func TestParseWithExpectedSchema(t *testing.T) {
 			}),
 		},
 	})
-	arrayFieldItemSchema := newSchema(spec.SchemaProps{
-		Type: []string{"object"},
-		Properties: map[string]spec.Schema{
-			"objectInArray": newSchema(spec.SchemaProps{Type: []string{"string"}}),
-		},
-		AdditionalProperties: &spec.SchemaOrBool{
-			Allows: true,
-			Schema: &spec.Schema{
-				VendorExtensible: spec.VendorExtensible{
-					Extensions: spec.Extensions{},
-				},
-			},
-		},
-	})
 	arrayFieldSchema := newSchema(spec.SchemaProps{
 		Type: []string{"array"},
 		Items: &spec.SchemaOrArray{
-			Schema: &arrayFieldItemSchema,
+			Schema: new(newSchema(spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"objectInArray": newSchema(spec.SchemaProps{Type: []string{"string"}}),
+				},
+				AdditionalProperties: &spec.SchemaOrBool{
+					Allows: true,
+					Schema: &spec.Schema{
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{},
+						},
+					},
+				},
+			})),
 		},
 	})
 
@@ -1178,6 +1178,7 @@ func TestOneOfAndAnyOf(t *testing.T) {
 		})
 	}
 }
+
 func TestOneOfWithStructuralConstraints(t *testing.T) {
 	t.Run("networkRef style schema with structural constraints", func(t *testing.T) {
 		schema := &spec.Schema{

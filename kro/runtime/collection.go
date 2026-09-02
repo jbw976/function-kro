@@ -19,7 +19,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/crossplane-contrib/function-kro/kro/metadata"
+	"github.com/kubernetes-sigs/kro/pkg/metadata"
 )
 
 func validateUniqueIdentities(objs []*unstructured.Unstructured) error {

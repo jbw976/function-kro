@@ -21,7 +21,8 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
-	"github.com/crossplane-contrib/function-kro/kro/cel/sentinels"
+
+	"github.com/kubernetes-sigs/kro/pkg/cel/sentinels"
 )
 
 // omitVal is the CEL ref.Val wrapper for the omit sentinel.

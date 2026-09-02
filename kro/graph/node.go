@@ -18,9 +18,10 @@ import (
 	"slices"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
-	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
+	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
+	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
 )
 
 // Well-known node/variable identifiers used in CEL expressions.
@@ -89,9 +90,19 @@ type NodeMeta struct {
 	Index int
 	// Type identifies the kind of node (Resource, Collection, External, Instance).
 	Type NodeType
-	// NOTE: GVR and Namespaced removed — Crossplane manages resource identity and namespace scoping.
+	// GVR is the GroupVersionResource for this node's resources.
+	GVR schema.GroupVersionResource
+	// Namespaced indicates if the resource is namespace-scoped.
+	Namespaced bool
 	// Dependencies lists the IDs of nodes this node depends on.
 	Dependencies []string
+}
+
+// addDependency appends dep to the dependency list if not already present.
+func (m *NodeMeta) addDependency(dep string) {
+	if !slices.Contains(m.Dependencies, dep) {
+		m.Dependencies = append(m.Dependencies, dep)
+	}
 }
 
 // ForEachDimension represents a parsed forEach dimension from an RGD resource.
@@ -128,6 +139,10 @@ type Node struct {
 	// ForEach holds the forEach dimensions for collection resources.
 	// nil or empty means this is not a collection.
 	ForEach []ForEachDimension
+
+	// Conditions holds the compiled expressions of the author-defined
+	// `conditions:` block (NodeTypeInstance only; nil for resource nodes).
+	Conditions []*krocel.Expression
 }
 
 // DeepCopy creates a deep copy of the Node.
@@ -142,11 +157,14 @@ func (n *Node) DeepCopy() *Node {
 			ID:           n.Meta.ID,
 			Index:        n.Meta.Index,
 			Type:         n.Meta.Type,
+			GVR:          n.Meta.GVR,
+			Namespaced:   n.Meta.Namespaced,
 			Dependencies: slices.Clone(n.Meta.Dependencies),
 		},
 		IncludeWhen: slices.Clone(n.IncludeWhen),
 		ReadyWhen:   slices.Clone(n.ReadyWhen),
 		ForEach:     slices.Clone(n.ForEach),
+		Conditions:  slices.Clone(n.Conditions),
 	}
 
 	if n.Template != nil {
@@ -157,8 +175,7 @@ func (n *Node) DeepCopy() *Node {
 		cp.Variables = make([]*variable.ResourceField, len(n.Variables))
 		for i, v := range n.Variables {
 			copyVar := *v
-			exprCopy := *v.Expression
-			copyVar.Expression = &exprCopy
+			copyVar.Expression = new(*v.Expression)
 			cp.Variables[i] = &copyVar
 		}
 	}

@@ -18,10 +18,10 @@ import (
 	"fmt"
 
 	"github.com/google/cel-go/cel"
-	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
 	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiservercel "k8s.io/apiserver/pkg/cel"
-	"k8s.io/utils/ptr"
+
+	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
 )
 
 // GenerateSchemaFromCELTypes generates a JSONSchemaProps from a map of CEL types.
@@ -59,7 +59,7 @@ func primitiveTypeToSchema(typeName string) (*extv1.JSONSchemaProps, bool) {
 	case "null_type":
 		return &extv1.JSONSchemaProps{
 			Description:            "null type - any value allowed",
-			XPreserveUnknownFields: ptr.To(true),
+			XPreserveUnknownFields: new(true),
 		}, true
 	default:
 		return nil, false
@@ -149,7 +149,7 @@ func inferSchemaFromCELType(celType *cel.Type, provider *krocel.DeclTypeProvider
 
 	case cel.DynKind:
 		return &extv1.JSONSchemaProps{
-			XPreserveUnknownFields: ptr.To(true),
+			XPreserveUnknownFields: new(true),
 		}, nil
 
 	case cel.TimestampKind:
@@ -162,7 +162,7 @@ func inferSchemaFromCELType(celType *cel.Type, provider *krocel.DeclTypeProvider
 		// Unknown type - be permissive
 		return &extv1.JSONSchemaProps{
 			Description:            fmt.Sprintf("unknown CEL type: %s", typeName),
-			XPreserveUnknownFields: ptr.To(true),
+			XPreserveUnknownFields: new(true),
 		}, nil
 	}
 }
@@ -171,7 +171,7 @@ func inferSchemaFromCELType(celType *cel.Type, provider *krocel.DeclTypeProvider
 // It tracks visited types to prevent infinite recursion on cyclic type definitions.
 func extractSchemaFromDeclTypeWithCycleDetection(declType *apiservercel.DeclType, visited map[string]bool) (*extv1.JSONSchemaProps, error) {
 	if declType == nil {
-		return &extv1.JSONSchemaProps{XPreserveUnknownFields: ptr.To(true)}, nil
+		return &extv1.JSONSchemaProps{XPreserveUnknownFields: new(true)}, nil
 	}
 
 	// Get type identifier for cycle detection
@@ -233,7 +233,7 @@ func extractSchemaFromDeclTypeWithCycleDetection(declType *apiservercel.DeclType
 				return schema, nil
 			}
 		}
-		return &extv1.JSONSchemaProps{XPreserveUnknownFields: ptr.To(true)}, nil
+		return &extv1.JSONSchemaProps{XPreserveUnknownFields: new(true)}, nil
 	}
 
 	schema := &extv1.JSONSchemaProps{

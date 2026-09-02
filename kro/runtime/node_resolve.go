@@ -18,11 +18,14 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
-	"github.com/crossplane-contrib/function-kro/kro/runtime/resolver"
+	"github.com/kubernetes-sigs/kro/pkg/graph"
+	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
+	"github.com/kubernetes-sigs/kro/pkg/metrics"
+	"github.com/kubernetes-sigs/kro/pkg/runtime/resolver"
 )
 
 func (n *Node) hardResolveSingleResource(vars []*variable.ResourceField) ([]*unstructured.Unstructured, error) {
@@ -57,7 +60,7 @@ func (n *Node) hardResolveCollection(vars []*variable.ResourceField, setIndexLab
 		return nil, err
 	}
 
-	collectionSize.Observe(float64(len(items)))
+	metrics.CollectionSize.Observe(float64(len(items)))
 
 	if len(items) == 0 {
 		// Resolved empty collection: return non-nil empty slice to distinguish
@@ -262,15 +265,13 @@ func (n *Node) templateVarsForPaths(paths []string) []*variable.ResourceField {
 		return n.templateVars
 	}
 
-	pathSet := make(map[string]struct{}, len(paths))
-	for _, p := range paths {
-		pathSet[p] = struct{}{}
-	}
-
 	result := make([]*variable.ResourceField, 0, len(n.templateVars))
 	for _, v := range n.templateVars {
-		if _, ok := pathSet[v.Path]; ok {
-			result = append(result, v)
+		for _, p := range paths {
+			if v.Path == p || strings.HasPrefix(v.Path, p+".") {
+				result = append(result, v)
+				break
+			}
 		}
 	}
 	return result
@@ -300,5 +301,28 @@ func (n *Node) exprSetsForVars(
 	return baseExprs, iterExprs
 }
 
-// NOTE: normalizeNamespaces removed — Crossplane handles namespace assignment
-// for composed resources at the framework level.
+// normalizeNamespaces inherits the instance namespace onto namespaced children
+// that don't specify one. Cluster-scoped instances must resolve an explicit
+// namespace for namespaced children, otherwise reconciliation cannot safely
+// address them.
+func (n *Node) normalizeNamespaces(objs []*unstructured.Unstructured) error {
+	if !n.Spec.Meta.Namespaced {
+		return nil
+	}
+	ns := n.deps[graph.InstanceNodeID].observed[0].GetNamespace()
+	for _, obj := range objs {
+		if obj.GetNamespace() != "" {
+			continue
+		}
+		if ns == "" {
+			return fmt.Errorf(
+				"node %q is namespaced and must resolve metadata.namespace when the instance is cluster-scoped",
+				n.Spec.Meta.ID,
+			)
+		}
+		if obj.GetNamespace() == "" {
+			obj.SetNamespace(ns)
+		}
+	}
+	return nil
+}

@@ -27,7 +27,7 @@ import (
 	"k8s.io/apiserver/pkg/cel/openapi"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	"github.com/crossplane-contrib/function-kro/kro/cel/library"
+	"github.com/kubernetes-sigs/kro/pkg/cel/library"
 )
 
 // EnvOption is a function that modifies the environment options.
@@ -109,22 +109,30 @@ func BaseDeclarations() []cel.EnvOption {
 			ext.Bindings(),
 			cel.OptionalTypes(),
 			ext.Encoders(),
-			// Kubernetes CEL libraries: enable url(), getHost(), regex helpers, etc.
+			// Kubernetes CEL libraries: url(), regex, quantity, ip(), cidr(), semver(), etc.
 			// See https://kubernetes.io/docs/reference/using-api/cel/ and
 			// https://github.com/kubernetes-sigs/kro/issues/880.
 			k8scellib.Lists(),
 			k8scellib.URLs(),
 			k8scellib.Regex(),
 			k8scellib.Quantity(),
+			k8scellib.IP(),
+			k8scellib.CIDR(),
+			k8scellib.SemverLib(),
 			library.Random(),
 			library.Maps(),
 			library.JSON(),
+			library.Hash(),
 			library.Lists(),
 			// Omit() is registered globally so CEL can parse and type-check it
 			// everywhere. The graph builder rejects it in restricted contexts
 			// (includeWhen, readyWhen, forEach) via inspectExpressionRestricted
 			// and validateAndCompileForEach.
 			library.Omit(),
+			// Runtime() registers the `runtime` CEL variable used to author
+			// custom status conditions. The graph builder rejects it outside
+			// the schema's status.conditions block.
+			library.Runtime(),
 		}
 	})
 	return cachedBaseDeclarations
@@ -216,6 +224,16 @@ func defaultEnvironment(options ...EnvOption) (*cel.Env, *DeclTypeProvider, erro
 	}
 
 	env, err := base.Extend(declarations...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Wrap the resolved type provider so the type-checker can resolve the
+	// kro.run.Condition type returned by runtime.newCondition / condition and
+	// its fields. This must run after the typed-resource provider above is
+	// installed, since cel.CustomTypeProvider replaces (not layers) the
+	// provider; ConditionTypeProvider delegates everything else back to it.
+	env, err = env.Extend(cel.CustomTypeProvider(library.ConditionTypeProvider(env.CELTypeProvider())))
 	return env, provider, err
 }
 

@@ -25,10 +25,10 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
-	krocel "github.com/crossplane-contrib/function-kro/kro/cel"
-	"github.com/crossplane-contrib/function-kro/kro/graph"
-	"github.com/crossplane-contrib/function-kro/kro/graph/variable"
-	"github.com/crossplane-contrib/function-kro/kro/metadata"
+	krocel "github.com/kubernetes-sigs/kro/pkg/cel"
+	"github.com/kubernetes-sigs/kro/pkg/graph"
+	"github.com/kubernetes-sigs/kro/pkg/graph/variable"
+	"github.com/kubernetes-sigs/kro/pkg/metadata"
 )
 
 const testMaxCollectionSize = 1000
@@ -577,8 +577,7 @@ func TestNode_GetDesired_NamespaceNormalization(t *testing.T) {
 		node          *Node
 		wantNamespace string // expected namespace on the first result object
 	}{
-		// ── Namespaced resources: namespace is NOT injected in function-kro ──
-		// (Crossplane manages namespace scoping, normalizeNamespaces was removed)
+		// ── Namespaced resources: namespace IS injected ──────────────────
 		{
 			name: "namespaced resource without namespace gets instance namespace",
 			node: func() *Node {
@@ -591,7 +590,7 @@ func TestNode_GetDesired_NamespaceNormalization(t *testing.T) {
 						"metadata": map[string]any{"name": "web"},
 					}).build()
 			}(),
-			wantNamespace: "", // function-kro: no namespace injection
+			wantNamespace: "tenant-ns",
 		},
 		{
 			name: "namespaced resource with explicit namespace keeps it",
@@ -608,7 +607,7 @@ func TestNode_GetDesired_NamespaceNormalization(t *testing.T) {
 			wantNamespace: "other-ns",
 		},
 
-		// ── Namespaced external: namespace is NOT injected in function-kro ──
+		// ── Namespaced external: namespace IS injected ───────────────────
 		{
 			name: "namespaced external without namespace gets instance namespace",
 			node: func() *Node {
@@ -621,7 +620,7 @@ func TestNode_GetDesired_NamespaceNormalization(t *testing.T) {
 						"metadata": map[string]any{"name": "shared-config"},
 					}).build()
 			}(),
-			wantNamespace: "", // function-kro: no namespace injection
+			wantNamespace: "tenant-ns",
 		},
 		{
 			name: "namespaced external with explicit namespace keeps it",
@@ -1863,6 +1862,7 @@ func mustCompileTestExpr(expr string) *krocel.Expression {
 type testNodeBuilder struct {
 	id               string
 	nodeType         graph.NodeType
+	namespaced       bool
 	deps             map[string]*Node
 	observed         []*unstructured.Unstructured
 	desired          []*unstructured.Unstructured
@@ -1986,15 +1986,31 @@ func (b *testNodeBuilder) withTemplateVar(path string, expr string) *testNodeBui
 	return b
 }
 
+func (b *testNodeBuilder) withTemplateVarRefs(path string, expr string, refs ...string) *testNodeBuilder {
+	compiled := mustCompileTestExpr(expr)
+	compiled.References = refs
+	b.templateExprs = append(b.templateExprs, &expressionEvaluationState{
+		Expression: compiled,
+		Kind:       variable.ResourceVariableKindStatic,
+	})
+	b.templateVars = append(b.templateVars, &variable.ResourceField{
+		FieldDescriptor: variable.FieldDescriptor{
+			Path:       path,
+			Expression: compiled,
+		},
+	})
+	return b
+}
+
 // withTemplate sets the template.
 func (b *testNodeBuilder) withTemplate(obj map[string]any) *testNodeBuilder {
 	b.template = &unstructured.Unstructured{Object: obj}
 	return b
 }
 
-// withNamespaced is a no-op for function-kro compatibility.
-// In function-kro, NodeMeta has no Namespaced field.
+// withNamespaced marks the node as namespace-scoped.
 func (b *testNodeBuilder) withNamespaced() *testNodeBuilder {
+	b.namespaced = true
 	return b
 }
 
@@ -2009,8 +2025,9 @@ func (b *testNodeBuilder) build() *Node {
 	node := &Node{
 		Spec: &graph.Node{
 			Meta: graph.NodeMeta{
-				ID:   b.id,
-				Type: b.nodeType,
+				ID:         b.id,
+				Type:       b.nodeType,
+				Namespaced: b.namespaced,
 			},
 			Template: b.template,
 		},
@@ -2335,8 +2352,82 @@ func TestFilterContext(t *testing.T) {
 	}
 }
 
-// NOTE: TestNormalizeNamespaces removed — normalizeNamespaces was removed in
-// function-kro because Crossplane manages namespace scoping.
+func TestNormalizeNamespaces(t *testing.T) {
+	makeNode := func(instanceNS string) *Node {
+		inst := newTestNode(graph.InstanceNodeID, graph.NodeTypeInstance).
+			withObservedUnstructured(newUnstructured("v1", "Instance", instanceNS, "my-inst")).
+			build()
+		return newTestNode("child", graph.NodeTypeResource).
+			withDep(inst).
+			build()
+	}
+
+	tests := []struct {
+		name           string
+		nodeNamespaced bool
+		instanceNS     string
+		objs           []*unstructured.Unstructured
+		wantNamespaces []string
+		wantErr        string
+	}{
+		{
+			name:           "inherits instance namespace",
+			nodeNamespaced: true,
+			instanceNS:     "tenant-a",
+			objs: []*unstructured.Unstructured{
+				newUnstructured("v1", "ConfigMap", "", "generated"),
+				newUnstructured("v1", "ConfigMap", "explicit", "existing"),
+			},
+			wantNamespaces: []string{"tenant-a", "explicit"},
+		},
+		{
+			name:           "cluster-scoped instance rejects empty namespace on namespaced child",
+			nodeNamespaced: true,
+			instanceNS:     "",
+			objs: []*unstructured.Unstructured{
+				newUnstructured("v1", "ConfigMap", "", "no-ns"),
+				newUnstructured("v1", "ConfigMap", "explicit", "has-ns"),
+			},
+			wantNamespaces: []string{"", "explicit"},
+			wantErr:        "must resolve metadata.namespace",
+		},
+		{
+			name:           "cluster-scoped instance allows explicit namespace on namespaced child",
+			nodeNamespaced: true,
+			instanceNS:     "",
+			objs: []*unstructured.Unstructured{
+				newUnstructured("v1", "ConfigMap", "target-ns", "explicit"),
+			},
+			wantNamespaces: []string{"target-ns"},
+		},
+		{
+			name:           "cluster-scoped child is a no-op",
+			nodeNamespaced: false,
+			instanceNS:     "tenant-a",
+			objs: []*unstructured.Unstructured{
+				newUnstructured("v1", "ClusterRole", "", "cr"),
+			},
+			wantNamespaces: []string{""},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := makeNode(tt.instanceNS)
+			node.Spec.Meta.Namespaced = tt.nodeNamespaced
+			err := node.normalizeNamespaces(tt.objs)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			for i, obj := range tt.objs {
+				assert.Equal(t, tt.wantNamespaces[i], obj.GetNamespace())
+			}
+		})
+	}
+}
 
 func TestNode_TemplateVarsForPaths(t *testing.T) {
 	node := newTestNode("test", graph.NodeTypeResource).
@@ -2357,13 +2448,18 @@ func TestNode_TemplateVarsForPaths(t *testing.T) {
 		},
 		{
 			name:      "filters to identity paths",
-			paths:     identityPaths,
+			paths:     identityPathsForNodeType(graph.NodeTypeResource),
 			wantPaths: []string{"metadata.name", "metadata.namespace"},
 		},
 		{
 			name:      "returns empty slice for unknown paths",
 			paths:     []string{"status.ready"},
 			wantPaths: nil,
+		},
+		{
+			name:      "prefix match includes nested paths",
+			paths:     []string{"metadata.namespace", "metadata.selector"},
+			wantPaths: []string{"metadata.namespace"},
 		},
 	}
 
@@ -2455,14 +2551,14 @@ func TestNode_GetDesiredIdentity(t *testing.T) {
 					withTemplateExpr("schema.spec.name", variable.ResourceVariableKindStatic).
 					withTemplateExpr("subnet.status.id", variable.ResourceVariableKindDynamic).
 					build()
-	
+				node.Spec.Meta.Namespaced = true
 				return node
 			},
 			validate: func(t *testing.T, result []*unstructured.Unstructured, err error) {
 				require.NoError(t, err)
 				require.Len(t, result, 1)
 				assert.Equal(t, "demo", result[0].GetName())
-				assert.Equal(t, "", result[0].GetNamespace()) // function-kro: no namespace normalization
+				assert.Equal(t, "tenant-a", result[0].GetNamespace())
 			},
 		},
 		{
@@ -2485,7 +2581,7 @@ func TestNode_GetDesiredIdentity(t *testing.T) {
 					withTemplateVar("metadata.name", "region").
 					withTemplateExpr("region", variable.ResourceVariableKindIteration).
 					build()
-	
+				node.Spec.Meta.Namespaced = true
 				node.Spec.ForEach = []graph.ForEachDimension{
 					{Name: "region", Expression: krocel.NewUncompiled("schema.spec.regions")},
 				}
@@ -2495,18 +2591,79 @@ func TestNode_GetDesiredIdentity(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, result, 2)
 				assert.Equal(t, []string{"east", "west"}, []string{result[0].GetName(), result[1].GetName()})
-				assert.Equal(t, []string{"", ""}, []string{result[0].GetNamespace(), result[1].GetNamespace()}) // function-kro: no namespace normalization
+				assert.Equal(t, []string{"tenant-a", "tenant-a"}, []string{result[0].GetNamespace(), result[1].GetNamespace()})
 				assert.Empty(t, result[0].GetLabels()[metadata.CollectionIndexLabel])
 				assert.Empty(t, result[1].GetLabels()[metadata.CollectionIndexLabel])
 			},
 		},
 		{
-			name: "external collection has no desired identity",
+			name: "external collection resolves static selector as identity",
 			node: func() *Node {
-				return newTestNode("external", graph.NodeTypeExternalCollection).build()
+				return newTestNode("external", graph.NodeTypeExternalCollection).
+					withTemplate(map[string]any{
+						"apiVersion": "v1",
+						"kind":       "Pod",
+						"metadata": map[string]any{
+							"namespace": "default",
+							"selector":  map[string]any{"app": "foo"},
+						},
+					}).
+					build()
 			},
 			validate: func(t *testing.T, result []*unstructured.Unstructured, err error) {
 				require.NoError(t, err)
+				require.Len(t, result, 1)
+				assert.Equal(t, "default", result[0].GetNamespace())
+				sel, _, _ := unstructured.NestedStringMap(result[0].Object, "metadata", "selector")
+				assert.Equal(t, map[string]string{"app": "foo"}, sel)
+			},
+		},
+		{
+			name: "external collection resolves CEL selector as identity",
+			node: func() *Node {
+				schema := newTestNode(graph.InstanceNodeID, graph.NodeTypeInstance).
+					withObserved(map[string]any{"spec": map[string]any{"app": "bar"}}).
+					build()
+				return newTestNode("external", graph.NodeTypeExternalCollection).
+					withTemplate(map[string]any{
+						"apiVersion": "v1",
+						"kind":       "Pod",
+						"metadata": map[string]any{
+							"namespace": "default",
+							"selector":  map[string]any{"app": "${schema.spec.app}"},
+						},
+					}).
+					withTemplateVarRefs("metadata.selector.app", "schema.spec.app", "schema").
+					withDep(schema).
+					build()
+			},
+			validate: func(t *testing.T, result []*unstructured.Unstructured, err error) {
+				require.NoError(t, err)
+				require.Len(t, result, 1)
+				sel, _, _ := unstructured.NestedStringMap(result[0].Object, "metadata", "selector")
+				assert.Equal(t, map[string]string{"app": "bar"}, sel)
+			},
+		},
+		{
+			name: "external collection returns DataPending when selector dep is unobserved",
+			node: func() *Node {
+				schema := newTestNode(graph.InstanceNodeID, graph.NodeTypeInstance).build() // no observed
+				return newTestNode("external", graph.NodeTypeExternalCollection).
+					withTemplate(map[string]any{
+						"apiVersion": "v1",
+						"kind":       "Pod",
+						"metadata": map[string]any{
+							"namespace": "default",
+							"selector":  map[string]any{"app": "${schema.spec.app}"},
+						},
+					}).
+					withTemplateVarRefs("metadata.selector.app", "schema.spec.app", "schema").
+					withDep(schema).
+					build()
+			},
+			validate: func(t *testing.T, result []*unstructured.Unstructured, err error) {
+				require.Error(t, err)
+				assert.True(t, IsDataPending(err))
 				assert.Nil(t, result)
 			},
 		},
@@ -2582,6 +2739,59 @@ func TestNode_GetDesiredIdentity(t *testing.T) {
 			},
 		},
 		{
+			name: "collection identity ignores annotations with dependencies",
+			node: func() *Node {
+				// Create a dependency node that is NOT observed (simulates empty forEach)
+				depNode := newTestNode("a", graph.NodeTypeCollection).build()
+				// depNode has no observed state, so size(a) would fail
+
+				// Create instance with items for forEach
+				schema := newTestNode(graph.InstanceNodeID, graph.NodeTypeInstance).
+					withObserved(map[string]any{
+						"spec": map[string]any{
+							"items": []any{
+								map[string]any{"id": "x"},
+							},
+						},
+					}).
+					build()
+
+				// Collection B has annotation that references depNode via size(a)
+				// But identity (metadata.name) only depends on the forEach item
+				node := newTestNode("b", graph.NodeTypeCollection).
+					withDep(schema).
+					withDep(depNode).
+					withForEach("schema.spec.items").
+					withTemplate(map[string]any{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]any{
+							"name": "${item.id}",
+							"annotations": map[string]any{
+								"dep": "${string(size(a))}",
+							},
+						},
+					}).
+					withTemplateVar("metadata.name", "item.id").
+					withTemplateVar("metadata.annotations.dep", "string(size(a))").
+					withTemplateExpr("item.id", variable.ResourceVariableKindIteration).
+					withTemplateExpr("string(size(a))", variable.ResourceVariableKindStatic).
+					build()
+				node.Spec.ForEach = []graph.ForEachDimension{
+					{Name: "item", Expression: krocel.NewUncompiled("schema.spec.items")},
+				}
+				node.forEachExprs[0].Expression.References = []string{"schema"}
+				node.templateExprs[1].Expression.References = []string{"a"}
+				return node
+			},
+			validate: func(t *testing.T, result []*unstructured.Unstructured, err error) {
+				// Should succeed - annotations should NOT be evaluated for identity
+				require.NoError(t, err, "GetDesiredIdentity should ignore annotations")
+				require.Len(t, result, 1)
+				assert.Equal(t, "x", result[0].GetName())
+			},
+		},
+		{
 			name: "instance nodes panic when asked for desired identity",
 			node: func() *Node {
 				return newTestNode(graph.InstanceNodeID, graph.NodeTypeInstance).build()
@@ -2653,7 +2863,7 @@ func TestNode_DeleteTargets(t *testing.T) {
 					withTemplate(map[string]any{
 						"apiVersion": "v1",
 						"kind":       "ConfigMap",
-						"metadata":   map[string]any{"name": "${region}", "namespace": "tenant-a"},
+						"metadata":   map[string]any{"name": "${region}"},
 					}).
 					withTemplateVar("metadata.name", "region").
 					withTemplateExpr("region", variable.ResourceVariableKindIteration).
@@ -2663,7 +2873,7 @@ func TestNode_DeleteTargets(t *testing.T) {
 						newUnstructured("v1", "ConfigMap", "tenant-a", "east"),
 					).
 					build()
-	
+				node.Spec.Meta.Namespaced = true
 				node.Spec.ForEach = []graph.ForEachDimension{
 					{Name: "region", Expression: krocel.NewUncompiled("schema.spec.regions")},
 				}
@@ -2775,14 +2985,14 @@ func TestNode_GetDesired(t *testing.T) {
 					withTemplateVar("metadata.name", "schema.spec.name").
 					withTemplateExpr("schema.spec.name", variable.ResourceVariableKindStatic).
 					build()
-	
+				node.Spec.Meta.Namespaced = true
 				return node
 			},
 			validate: func(t *testing.T, result []*unstructured.Unstructured, err error) {
 				require.NoError(t, err)
 				require.Len(t, result, 1)
 				assert.Equal(t, "demo", result[0].GetName())
-				assert.Equal(t, "", result[0].GetNamespace()) // function-kro: no namespace normalization
+				assert.Equal(t, "tenant-a", result[0].GetNamespace())
 			},
 		},
 		{
@@ -2805,7 +3015,7 @@ func TestNode_GetDesired(t *testing.T) {
 					withTemplateVar("metadata.name", "region").
 					withTemplateExpr("region", variable.ResourceVariableKindIteration).
 					build()
-	
+				node.Spec.Meta.Namespaced = true
 				node.Spec.ForEach = []graph.ForEachDimension{
 					{Name: "region", Expression: krocel.NewUncompiled("schema.spec.regions")},
 				}
@@ -2816,7 +3026,7 @@ func TestNode_GetDesired(t *testing.T) {
 				require.Len(t, result, 2)
 				assert.Equal(t, "0", result[0].GetLabels()[metadata.CollectionIndexLabel])
 				assert.Equal(t, "1", result[1].GetLabels()[metadata.CollectionIndexLabel])
-				assert.Equal(t, []string{"", ""}, []string{result[0].GetNamespace(), result[1].GetNamespace()}) // function-kro: no namespace normalization
+				assert.Equal(t, []string{"tenant-a", "tenant-a"}, []string{result[0].GetNamespace(), result[1].GetNamespace()})
 			},
 		},
 		{
@@ -3250,7 +3460,7 @@ func TestNode_HardResolveCollection_Errors(t *testing.T) {
 					withTemplateVar("metadata.name", "region").
 					withTemplateExpr("region", variable.ResourceVariableKindIteration).
 					build()
-	
+				node.Spec.Meta.Namespaced = true
 				node.Spec.ForEach = []graph.ForEachDimension{
 					{Name: "region", Expression: krocel.NewUncompiled("schema.spec.regions")},
 				}

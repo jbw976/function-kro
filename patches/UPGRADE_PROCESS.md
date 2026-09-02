@@ -11,6 +11,8 @@ Function-KRO vendors code from upstream [kubernetes-sigs/kro](https://github.com
 3. Re-apply our adaptations
 4. Validate everything works
 
+This applies to every upstream release, patch versions included. Do not size the job from the version number. Patch releases from upstream routinely contain feature work. The v0.9.0 to v0.9.3 range reworked the graph builder and the runtime, both of which we adapt, and added new CEL libraries and a conditions feature. The scope check in Phase 1 tells you how big the upgrade actually is.
+
 ## Commit Strategy
 
 **Make incremental commits after each major step.** This provides:
@@ -107,17 +109,48 @@ Look for:
 
 ### Step 1.2: Clone Both Versions
 
-```bash
-# Clone the old version we're currently based on
-git clone --depth 1 --branch v{OLD} \
-    https://github.com/kubernetes-sigs/kro.git /tmp/kro-old
+One blobless clone plus two worktrees gives you a checkout of each version and a repo where `git diff v{OLD}..v{NEW}` works. Both matter: the checkouts feed the copy step in Phase 2, and the cross-tag diff drives the scope check below.
 
-# Clone the new version we're upgrading to
-git clone --depth 1 --branch v{NEW} \
-    https://github.com/kubernetes-sigs/kro.git /tmp/kro-new
+```bash
+git clone --filter=blob:none \
+    https://github.com/kubernetes-sigs/kro.git /tmp/kro
+
+git -C /tmp/kro worktree add /tmp/kro-old v{OLD}
+git -C /tmp/kro worktree add /tmp/kro-new v{NEW}
 ```
 
-### Step 1.3: Analyze Upstream Changes
+### Step 1.3: Scope Check
+
+Before reading any diffs, measure how much of the code we vendor actually moved.
+
+```bash
+git -C /tmp/kro diff --stat v{OLD}..v{NEW} -- \
+    pkg/graph pkg/cel pkg/runtime pkg/metadata pkg/testutil pkg/features
+```
+
+Three things to pull out of that output:
+
+1. **Total size.** A handful of files and a few dozen lines means you can copy just the changed files instead of running the full Phase 2 remove-and-copy. Hundreds of lines across many files means run the full process.
+
+2. **Which files we modify are in the list.** Cross-reference against the "Files We Modify" table below. Those are where re-applying adaptations takes real thought; everything else is a straight copy.
+
+3. **New cross-package imports.** Upstream may start importing a package we intentionally exclude, which is a new gap no patches doc mentions because it didn't exist before:
+
+   ```bash
+   git -C /tmp/kro grep -h "kro/pkg/" v{NEW} -- \
+       pkg/graph pkg/cel pkg/runtime pkg/metadata pkg/testutil pkg/features \
+       | grep -o "kro/pkg/[a-z0-9/]*" | sort | uniq -c | sort -rn
+   ```
+
+   Compare that list against the "What We Vendor" allowlist. Anything outside it needs a decision in Phase 3: vendor the new package, or adapt the code that imports it. This is not hypothetical: the v0.9.0 to v0.9.3 range deleted the per-package `metrics.go` files we vendor and pointed the vendored code at `pkg/metrics` instead, a package our allowlist excludes.
+
+Record the current dependency skew too, since the `github.com/kubernetes-sigs/kro` pin in `go.mod` moves independently of the vendored code (see Step 5.2):
+
+```bash
+grep "kubernetes-sigs/kro " go.mod
+```
+
+### Step 1.4: Analyze Upstream Changes
 
 Have an AI agent (or manually) analyze the differences. This analysis is a **working document for the upgrade conversation only** — do NOT commit it to the repo (see Phase 5 for cleanup rules).
 
@@ -503,12 +536,20 @@ Let the human handle manual testing and validation for now until we have more au
 - [ ] **Delete `patches/v{OLD}_PATCHES.md`** — superseded by the new patches doc
 - [ ] **Delete any `patches/v{OLD}_to_v{NEW}_CHANGES.md`** — this was a working doc for the upgrade, not a permanent artifact. Keeping it causes agents to treat pre-upgrade speculation as current truth.
 - [ ] Verify only `UPGRADE_PROCESS.md` and `v{NEW}_PATCHES.md` remain in `patches/`
+- [ ] Update every reference to the old baseline version. Renaming the patches doc breaks links elsewhere, so run `git grep -n "v{OLD}"` and fix each hit. Expect at least `AGENTS.md` (the directory tree, the reference-documents list, and the `/audit-patches` baseline note) and the "Files We Modify" preamble in this document.
 - [ ] Update `AGENTS.md` if architecture changed significantly
 - [ ] Update `README.md` with new KRO version
 
 ### Step 5.2: Update Dependencies
 
-Check if go.mod needs updates based on upstream:
+**Bump the `github.com/kubernetes-sigs/kro` pin to `v{NEW}` first.** We vendor most of upstream's `pkg/` tree but import the `api/v1alpha1` types (`Resource`, `ExternalRef`, `ForEachDimension`, `KRODomainName`) as an ordinary Go dependency. That pin and the vendored code are two independent references to the same upstream release, and nothing in the build complains when they disagree. Renovate bumps the pin on its own schedule, and an upgrade that only touches `kro/` leaves it behind, so the two drift silently in both directions. Close the gap here so the vendored code and the API types come from the same tag.
+
+```bash
+go get github.com/kubernetes-sigs/kro@v{NEW}
+go mod tidy
+```
+
+Then check whether upstream's other dependency versions moved:
 
 ```bash
 # Compare go.mod files

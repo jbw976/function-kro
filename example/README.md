@@ -128,6 +128,42 @@ kubectl delete -f conditionals/composition.yaml
 kubectl delete -f conditionals/xrd.yaml
 ```
 
+## Conditions Example
+
+This example demonstrates author-defined status conditions. A `conditions` list in
+the ResourceGraph status holds CEL expressions returning `runtime.newCondition(...)`,
+and function-kro returns the results to Crossplane, which merges them into the XR's
+status conditions next to the `Ready` and `Synced` conditions it manages itself.
+
+The `ReplicasConfigured` condition reads the XR spec and computes its status, so it
+resolves on the first reconcile. The `ConfigMapReady` condition reads the composed
+ConfigMap, so it appears only once that resource is observed: a condition whose data
+has not arrived yet is left off rather than reported as `Unknown`.
+
+Create the `AppConfig` XRD and composition:
+```shell
+kubectl apply -f conditions/xrd.yaml
+kubectl apply -f conditions/composition.yaml
+```
+
+Create an `AppConfig` instance:
+```shell
+kubectl apply -f conditions/xr.yaml
+```
+
+Both author conditions appear on the XR alongside Crossplane's own:
+```shell
+kubectl get appconfig.conditions.example.crossplane.io/cool-app -o json | jq '.status.conditions'
+```
+
+### Clean-up
+
+```shell
+kubectl delete -f conditions/xr.yaml
+kubectl delete -f conditions/composition.yaml
+kubectl delete -f conditions/xrd.yaml
+```
+
 ## Readiness Example
 
 This example demonstrates custom readiness conditions using `readyWhen`. Each resource

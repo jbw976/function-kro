@@ -1,0 +1,45 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: appconfig-conditions
+spec:
+  compositeTypeRef:
+    apiVersion: conditions.example.crossplane.io/v1
+    kind: AppConfig
+  mode: Pipeline
+  pipeline:
+  - step: kro-run
+    functionRef:
+      name: function-kro
+    input:
+      apiVersion: kro.fn.crossplane.io/v1alpha1
+      kind: ResourceGraph
+      status:
+        configMapName: ${configMap.metadata.name}
+        # Each entry is a CEL expression returning runtime.newCondition(...).
+        # Crossplane merges the results into the XR's status conditions,
+        # alongside the Ready and Synced conditions it manages itself. The
+        # entries are quoted because the CEL map literals contain ": ".
+        conditions:
+        # Reads a composed resource, so it stays absent until the ConfigMap is
+        # observed. A condition whose data has not arrived is omitted rather
+        # than reported Unknown.
+        - "${runtime.newCondition({type: 'ConfigMapReady', status: 'True', reason: 'ConfigMapObserved', message: 'config map ' + configMap.metadata.name + ' exists'})}"
+        # Reads the XR's own spec, so it resolves on the first reconcile, and
+        # computes its status rather than hard-coding it.
+        - "${runtime.newCondition({type: 'ReplicasConfigured', status: schema.spec.replicas > 0 ? 'True' : 'False', reason: schema.spec.replicas > 0 ? 'ReplicasRequested' : 'NoReplicasRequested', message: 'requested replicas: ' + string(schema.spec.replicas)})}"
+      resources:
+      - id: configMap
+        readyWhen:
+        - ${true}
+        template:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: ${schema.spec.appName}-config
+          data:
+            appName: ${schema.spec.appName}
+            replicas: ${string(schema.spec.replicas)}
+
+# There is no function-auto-ready step in this pipeline because the ConfigMap
+# sets its own readyWhen.

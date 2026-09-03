@@ -262,6 +262,11 @@ func (n *Node) resolve(mode resolveMode) (result []*unstructured.Unstructured, e
 		return nil, err
 	}
 
+	// Upstream inherits the instance namespace onto namespaced children here.
+	// Crossplane assigns the namespace of a composed resource that does not set
+	// one, so doing it ourselves would both duplicate that and stamp a namespace
+	// onto cluster-scoped resources, whose scope we cannot see.
+
 	if mode != resolveIdentity {
 		n.desired = result
 	}

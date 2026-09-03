@@ -1,0 +1,7 @@
+apiVersion: conditions.example.crossplane.io/v1
+kind: AppConfig
+metadata:
+  name: cool-app
+spec:
+  appName: cool-app
+  replicas: 3

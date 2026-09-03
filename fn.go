@@ -7,6 +7,7 @@ import (
 	"maps"
 	"strings"
 
+	"github.com/go-logr/logr"
 	"github.com/gobuffalo/flect"
 	"github.com/kubernetes-sigs/kro/api/v1alpha1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -224,7 +225,87 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 		return rsp, nil
 	}
 
+	setAuthorConditions(f.log, rsp, rt, oxr)
+
 	return rsp, nil
+}
+
+// setAuthorConditions evaluates the author-defined conditions from the
+// ResourceGraph's status.conditions block and adds them to the response.
+// Crossplane merges response conditions into the XR's status, so an author's
+// condition types land on the XR next to Crossplane's own Ready and Synced.
+//
+// A condition whose expression cannot resolve yet is left off the response
+// entirely rather than reported as Unknown, matching how we skip unresolved
+// status fields: the XR keeps whatever it already has until the data arrives.
+func setAuthorConditions(log logging.Logger, rsp *fnv1.RunFunctionResponse, rt *runtime.Runtime, oxr *resource.Composite) {
+	instance := rt.Instance()
+	if !instance.HasConditions() {
+		return
+	}
+
+	// The logger only carries per-expression detail that the returned error
+	// repeats, so we report through the error and discard the rest.
+	conditions, _, err := instance.EvaluateConditions(logr.Discard(), observedXRConditions(oxr))
+	if err != nil {
+		// Expressions that failed are dropped and the rest still apply, so this
+		// is a warning on the XR rather than a failed render.
+		log.Info("Author condition evaluation degraded", "error", err)
+		response.Warning(rsp, err)
+	}
+
+	for _, c := range conditions {
+		var opt *response.ConditionOption
+		switch metav1.ConditionStatus(c.Status) {
+		case metav1.ConditionTrue:
+			opt = response.ConditionTrue(rsp, c.ConditionType, c.Reason)
+		case metav1.ConditionFalse:
+			opt = response.ConditionFalse(rsp, c.ConditionType, c.Reason)
+		case metav1.ConditionUnknown:
+			opt = response.ConditionUnknown(rsp, c.ConditionType, c.Reason)
+		default:
+			// newCondition's macro constrains status to True, False or Unknown,
+			// so reaching this means CEL produced something the macro could not
+			// check. Unknown is the honest reading of it.
+			opt = response.ConditionUnknown(rsp, c.ConditionType, c.Reason)
+		}
+		if c.Message != "" {
+			opt.WithMessage(c.Message)
+		}
+	}
+}
+
+// observedXRConditions returns the XR's current conditions, which KRO binds to
+// schema.status.conditions so that runtime.condition(schema, 'X') resolves.
+//
+// Standalone KRO passes its own instance conditions here. Those do not exist in
+// a composition function, so we pass what the XR actually has: Crossplane's
+// Ready and Synced, plus any author conditions merged in by earlier reconciles.
+func observedXRConditions(oxr *resource.Composite) []v1alpha1.Condition {
+	var status struct {
+		Conditions []struct {
+			Type    string `json:"type"`
+			Status  string `json:"status"`
+			Reason  string `json:"reason,omitempty"`
+			Message string `json:"message,omitempty"`
+		} `json:"conditions,omitempty"`
+	}
+	// An XR that has never been reconciled has no status at all, and no
+	// conditions to bind.
+	if err := fieldpath.Pave(oxr.Resource.Object).GetValueInto("status", &status); err != nil {
+		return nil
+	}
+
+	out := make([]v1alpha1.Condition, 0, len(status.Conditions))
+	for _, c := range status.Conditions {
+		out = append(out, v1alpha1.Condition{
+			Type:    v1alpha1.ConditionType(c.Type),
+			Status:  metav1.ConditionStatus(c.Status),
+			Reason:  &c.Reason,
+			Message: &c.Message,
+		})
+	}
+	return out
 }
 
 // decodeAsK8sAPI re-decodes the supplied objects in place using the same JSON decoder the API

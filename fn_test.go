@@ -1529,6 +1529,204 @@ func TestRunFunction(t *testing.T) {
 				},
 			},
 		},
+		"AuthorConditionOnXR": {
+			reason: "A status.conditions expression should produce a condition on the response, which Crossplane merges into the XR status",
+			args: args{
+				req: &fnv1.RunFunctionRequest{
+					Meta: &fnv1.RequestMeta{Tag: "test", Capabilities: []fnv1.Capability{fnv1.Capability_CAPABILITY_CAPABILITIES, fnv1.Capability_CAPABILITY_REQUIRED_SCHEMAS}},
+					Input: resource.MustStructJSON(`{
+						"apiVersion": "kro.fn.crossplane.io/v1alpha1",
+						"kind": "ResourceGraph",
+						"resources": [{
+							"id": "bucket",
+							"template": {
+								"apiVersion": "s3.aws.upbound.io/v1beta1",
+								"kind": "Bucket",
+								"metadata": {},
+								"spec": {
+									"forProvider": {
+										"region": "us-west-2"
+									}
+								}
+							}
+						}],
+						"status": {
+							"bucketName": "${bucket.status.atProvider.id}",
+							"conditions": [
+								"${runtime.newCondition({type: 'BucketReady', status: 'True', reason: 'BucketProvisioned', message: 'bucket ' + bucket.status.atProvider.id + ' is available'})}"
+							]
+						}
+					}`),
+					Observed: &fnv1.State{
+						Composite: &fnv1.Resource{
+							Resource: resource.MustStructJSON(`{
+								"apiVersion": "example.crossplane.io/v1",
+								"kind": "XBucket",
+								"metadata": {"name": "test-bucket"},
+								"spec": {}
+							}`),
+						},
+						Resources: map[string]*fnv1.Resource{
+							"bucket": {
+								Resource: resource.MustStructJSON(`{
+									"apiVersion": "s3.aws.upbound.io/v1beta1",
+									"kind": "Bucket",
+									"metadata": {"name": "test-bucket-abc123"},
+									"spec": {
+										"forProvider": {
+											"region": "us-west-2"
+										}
+									},
+									"status": {
+										"atProvider": {
+											"id": "test-bucket-abc123"
+										}
+									}
+								}`),
+							},
+						},
+					},
+					RequiredSchemas: map[string]*fnv1.Schema{
+						"example.crossplane.io/v1, Kind=XBucket": schemaXBucket,
+						"s3.aws.upbound.io/v1beta1, Kind=Bucket": schemaBucket,
+					},
+				},
+			},
+			want: want{
+				rsp: &fnv1.RunFunctionResponse{
+					Meta: &fnv1.ResponseMeta{Tag: "test", Ttl: durationpb.New(response.DefaultTTL)},
+					Requirements: &fnv1.Requirements{
+						Schemas: map[string]*fnv1.SchemaSelector{
+							"example.crossplane.io/v1, Kind=XBucket": {
+								ApiVersion: "example.crossplane.io/v1",
+								Kind:       "XBucket",
+							},
+							"s3.aws.upbound.io/v1beta1, Kind=Bucket": {
+								ApiVersion: "s3.aws.upbound.io/v1beta1",
+								Kind:       "Bucket",
+							},
+						},
+					},
+					Conditions: []*fnv1.Condition{
+						{
+							Type:    "BucketReady",
+							Status:  fnv1.Status_STATUS_CONDITION_TRUE,
+							Reason:  "BucketProvisioned",
+							Message: new("bucket test-bucket-abc123 is available"),
+							Target:  fnv1.Target_TARGET_COMPOSITE.Enum(),
+						},
+					},
+					Desired: &fnv1.State{
+						Composite: &fnv1.Resource{
+							Resource: resource.MustStructJSON(`{
+								"apiVersion": "example.crossplane.io/v1",
+								"kind": "XBucket",
+								"status": {
+									"bucketName": "test-bucket-abc123"
+								}
+							}`),
+						},
+						Resources: map[string]*fnv1.Resource{
+							"bucket": {
+								Resource: resource.MustStructJSON(`{
+									"apiVersion": "s3.aws.upbound.io/v1beta1",
+									"kind": "Bucket",
+									"metadata": {},
+									"spec": {
+										"forProvider": {
+											"region": "us-west-2"
+										}
+									}
+								}`),
+							},
+						},
+					},
+				},
+			},
+		},
+		"AuthorConditionPendingData": {
+			reason: "A condition whose resource is not observed yet should be left off the response entirely, so the XR keeps the conditions it already has",
+			args: args{
+				req: &fnv1.RunFunctionRequest{
+					Meta: &fnv1.RequestMeta{Tag: "test", Capabilities: []fnv1.Capability{fnv1.Capability_CAPABILITY_CAPABILITIES, fnv1.Capability_CAPABILITY_REQUIRED_SCHEMAS}},
+					Input: resource.MustStructJSON(`{
+						"apiVersion": "kro.fn.crossplane.io/v1alpha1",
+						"kind": "ResourceGraph",
+						"resources": [{
+							"id": "bucket",
+							"template": {
+								"apiVersion": "s3.aws.upbound.io/v1beta1",
+								"kind": "Bucket",
+								"metadata": {},
+								"spec": {
+									"forProvider": {
+										"region": "us-west-2"
+									}
+								}
+							}
+						}],
+						"status": {
+							"conditions": [
+								"${runtime.newCondition({type: 'BucketReady', status: 'True', reason: 'BucketProvisioned', message: bucket.status.atProvider.id})}"
+							]
+						}
+					}`),
+					Observed: &fnv1.State{
+						Composite: &fnv1.Resource{
+							Resource: resource.MustStructJSON(`{
+								"apiVersion": "example.crossplane.io/v1",
+								"kind": "XBucket",
+								"metadata": {"name": "test-bucket"},
+								"spec": {}
+							}`),
+						},
+					},
+					RequiredSchemas: map[string]*fnv1.Schema{
+						"example.crossplane.io/v1, Kind=XBucket": schemaXBucket,
+						"s3.aws.upbound.io/v1beta1, Kind=Bucket": schemaBucket,
+					},
+				},
+			},
+			want: want{
+				rsp: &fnv1.RunFunctionResponse{
+					Meta: &fnv1.ResponseMeta{Tag: "test", Ttl: durationpb.New(response.DefaultTTL)},
+					Requirements: &fnv1.Requirements{
+						Schemas: map[string]*fnv1.SchemaSelector{
+							"example.crossplane.io/v1, Kind=XBucket": {
+								ApiVersion: "example.crossplane.io/v1",
+								Kind:       "XBucket",
+							},
+							"s3.aws.upbound.io/v1beta1, Kind=Bucket": {
+								ApiVersion: "s3.aws.upbound.io/v1beta1",
+								Kind:       "Bucket",
+							},
+						},
+					},
+					Desired: &fnv1.State{
+						Composite: &fnv1.Resource{
+							Resource: resource.MustStructJSON(`{
+								"apiVersion": "example.crossplane.io/v1",
+								"kind": "XBucket"
+							}`),
+						},
+						Resources: map[string]*fnv1.Resource{
+							"bucket": {
+								Resource: resource.MustStructJSON(`{
+									"apiVersion": "s3.aws.upbound.io/v1beta1",
+									"kind": "Bucket",
+									"metadata": {},
+									"spec": {
+										"forProvider": {
+											"region": "us-west-2"
+										}
+									}
+								}`),
+							},
+						},
+					},
+				},
+			},
+		},
 		"ReadyWhenTrue": {
 			reason: "When readyWhen is defined and the expression evaluates to true, the resource should be marked ReadyTrue",
 			args: args{

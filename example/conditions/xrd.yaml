@@ -1,0 +1,30 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: appconfigs.conditions.example.crossplane.io
+spec:
+  group: conditions.example.crossplane.io
+  names:
+    kind: AppConfig
+    plural: appconfigs
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              appName:
+                type: string
+              replicas:
+                type: integer
+          status:
+            type: object
+            properties:
+              configMapName:
+                type: string

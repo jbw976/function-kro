@@ -623,17 +623,18 @@ the upgrade process. Squashing is optional and depends on team preference.
 
 ### Files We Modify
 
-Based on the v0.9.0 audit, these are all files we modify from upstream:
+Based on the v0.9.3 audit, these are all non-test files we modify from upstream. The diff script skips `*_test.go`, so the vendored tests that track these APIs are listed separately in the patches doc:
 
 | File | Adaptation |
 |------|------------|
 | `kro/graph/builder.go` | Constructor accepts resolver; NewResourceGraphDefinition accepts schema; remove SimpleSchema/CRD gen; remove REST mapper |
 | `kro/graph/node.go` | Remove `GVR` and `Namespaced` from NodeMeta |
-| `kro/graph/validation.go` | API type adaptation; merge validation functions; always-namespaced assumption |
+| `kro/graph/validation.go` | API type adaptation; drop Kind validation; always-namespaced assumption |
 | `kro/graph/schema/schema.go` | Add `DeepCopySchema` |
+| `kro/graph/conditions.go` | Import group split (formatting only) |
 | `kro/runtime/node.go` | Remove `normalizeNamespaces` call |
 | `kro/runtime/node_resolve.go` | Remove `normalizeNamespaces` method |
-| `kro/metadata/groupversion.go` | Remove `GetResourceGraphDefinitionInstanceGVR` |
+| `kro/runtime/conditions.go` | Import group split (formatting only) |
 | `kro/testutil/generator/resourcegraphdefinition.go` | Adapted for our input types; added `BuildTestXRSchema` |
 
 ### Files We Intentionally Exclude
@@ -644,6 +645,7 @@ Based on the v0.9.0 audit, these are all files we modify from upstream:
 | `graph/hash/*` | Revision hashing — function-kro doesn't track revisions |
 | `graph/revisions/*` (3 files) | Revision registry/resolver/metrics — controller-only infrastructure |
 | `metadata/owner_reference.go` | Owner reference helpers — Crossplane manages resource ownership |
+| `metrics/*` (8 files) | Controller-side collectors. We vendor only the four prometheus-only files that graph, cel and runtime import |
 
 ### What We Vendor (Allowlist)
 
@@ -659,6 +661,7 @@ These are the **only** upstream `pkg/` packages we copy:
 | `pkg/metadata/` | `kro/metadata/` | Labels, finalizers, GVK utilities |
 | `pkg/features/` | `kro/features/` | Feature gate definitions |
 | `pkg/testutil/` | `kro/testutil/` | Test helpers: generator, fake discovery/resolver |
+| `pkg/metrics/` | `kro/metrics/` | **Partial**: only the prometheus-only collector files the vendored code imports |
 
 **IMPORTANT: If upstream introduces a new `pkg/` directory, do NOT copy it** unless it is a subdirectory of one of the packages above or you have explicitly evaluated that function-kro needs it. The default should be to skip unknown packages.
 
@@ -671,7 +674,6 @@ Examples of upstream packages we skip (non-exhaustive):
 | `pkg/simpleschema/` | Crossplane provides OpenAPI schemas directly |
 | `pkg/dynamiccontroller/` | Replaced by Crossplane function framework |
 | `pkg/client/` | Kubernetes client utilities — no API access in functions |
-| `pkg/metrics/` | Controller metrics — not applicable |
 | `pkg/requeue/` | Controller requeue logic — not applicable |
 
 ---

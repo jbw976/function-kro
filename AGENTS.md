@@ -97,12 +97,13 @@ function-kro/
 ├── kro/                     # Core KRO implementation
 │   ├── cel/                 # CEL environment setup and expression evaluation
 │   │   ├── ast/             # AST inspection for dependency extraction
-│   │   └── library/         # Custom CEL functions (random)
+│   │   └── library/         # Custom CEL functions (random, hash, omit, runtime)
 │   ├── features/            # Feature gate definitions
 │   ├── graph/               # Graph building and validation
 │   │   ├── builder.go       # Main graph builder (key file)
 │   │   ├── node.go          # Node types and graph node structure
 │   │   ├── validation.go    # Resource and expression validation
+│   │   ├── conditions.go    # Build-time rules for author condition expressions
 │   │   ├── dag/             # Generic DAG with cycle detection
 │   │   ├── fieldpath/       # Field path building and parsing
 │   │   ├── parser/          # Extracts ${...} expressions from templates
@@ -110,17 +111,18 @@ function-kro/
 │   │   └── variable/        # CEL variable management
 │   ├── runtime/             # Runtime execution engine
 │   │   ├── node.go          # Runtime node (GetDesired, IsReady, IsIgnored, etc.)
+│   │   ├── conditions.go    # Author condition evaluation
 │   │   ├── collection.go    # Collection identity matching, index labels
 │   │   └── resolver/        # Template field resolution engine
 │   ├── metadata/            # Kubernetes metadata utilities (labels, finalizers, GVK)
+│   ├── metrics/             # Prometheus collectors the vendored code references (partial vendor, never registered)
 │   └── testutil/            # Test helpers (generator, fake discovery/resolver)
 │
 ├── patches/                 # Upgrade documentation
-│   ├── v0.9.0_PATCHES.md   # Current adaptation reference (v0.9.0 baseline)
-│   ├── v0.8.x_PATCHES.md   # Historical v0.8.x adaptation reference
+│   ├── v0.9.3_PATCHES.md    # Current adaptation reference (v0.9.3 baseline)
 │   └── UPGRADE_PROCESS.md   # Process for upgrading from upstream KRO
 ├── package/                 # Crossplane package definition
-├── example/                 # Usage examples (basic, collections, conditionals, externalref, readiness, omit, core, app, collection-limits)
+├── example/                 # Usage examples (basic, collections, conditionals, conditions, externalref, readiness, omit, core, app, collection-limits)
 ├── scripts/                 # Build scripts (build-local.sh, diff-upstream-kro.sh)
 └── Dockerfile               # Production build
 ```
@@ -312,6 +314,23 @@ Resources with `forEach` expand into multiple composed resources at runtime:
 
 Key files: `kro/runtime/node.go` (expansion logic), `kro/runtime/collection.go` (identity matching, index labels), `fn.go` (observation grouping)
 
+### Author-Defined Status Conditions
+
+A `conditions:` list in the ResourceGraph status holds CEL expressions returning
+`runtime.newCondition(...)`, and their results become conditions on the XR:
+- Builder pulls the block out of the status template (`extractConditionExpressions`),
+  compiles it (`buildConditions`), and puts it on the instance node's `Conditions`
+- Runtime evaluates the expressions per invocation (`kro/runtime/conditions.go:EvaluateConditions`)
+- `fn.go:setAuthorConditions()` maps each result onto the response, where Crossplane
+  merges it into the XR's status conditions next to `Ready` and `Synced`
+- An expression whose data has not arrived yet is left off the response rather than
+  reported `Unknown`, so the XR keeps the conditions it already has
+- `runtime.condition(schema, 'X')` reads the XR's observed conditions, since kro's own
+  instance conditions (`GraphResolved`, `ResourcesReady`) do not exist in a function
+
+Key files: `kro/graph/conditions.go` (build-time validation), `kro/runtime/conditions.go`
+(evaluation), `fn.go` (response mapping), `example/conditions/`
+
 ### External References
 
 ExternalRef resources reference existing cluster resources without creating them:
@@ -348,11 +367,10 @@ The runtime deduplicates CEL expression evaluation via a shared `expressionsCach
 
 ## Key Reference Documents
 
-- `patches/v0.9.0_PATCHES.md` — Comprehensive reference for all KRO v0.9.0 adaptations (the definitive source for what changed from upstream)
-- `patches/v0.8.x_PATCHES.md` — Historical reference for KRO v0.8.x adaptations (superseded by v0.9.0)
+- `patches/v0.9.3_PATCHES.md` — Comprehensive reference for all KRO v0.9.3 adaptations (the definitive source for what changed from upstream)
 - `patches/UPGRADE_PROCESS.md` — Process for upgrading from upstream KRO releases
 - `spec-desired-ssa.md` — Original SSA design spec (references older API names; implementation evolved)
-- `example/README.md` — Working examples for all major features (basic, collections, conditionals, externalref, readiness, omit, core, app, collection-limits)
+- `example/README.md` — Working examples for all major features (basic, collections, conditionals, conditions, externalref, readiness, omit, core, app, collection-limits)
 
 ## Auditing Our Code Against Upstream KRO
 
@@ -362,7 +380,7 @@ The runtime deduplicates CEL expression evaluation via a shared `expressionsCach
 
 Two skills automate the audit process end-to-end:
 
-- **`/audit-patches v<tag>`** — Validates that `patches/v*_PATCHES.md` accurately documents all modifications, additions, and exclusions. Use when checking documentation accuracy or before an upgrade. Current baseline: `v0.9.0`.
+- **`/audit-patches v<tag>`** — Validates that `patches/v*_PATCHES.md` accurately documents all modifications, additions, and exclusions. Use when checking documentation accuracy or before an upgrade. Current baseline: `v0.9.3`.
 - **`/review-kro-adaptations v<tag>`** — Principal-level engineering review of every adaptation. Assesses minimality, correctness, maintainability, and whether a senior engineer would make different choices. Use for code quality assessment.
 
 Both skills use the diff script under the hood, clone upstream once, and produce structured reports.

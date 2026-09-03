@@ -57,7 +57,7 @@ UPSTREAM_INPUT_PREFIX="sigs.k8s.io/kro/api/v1alpha1"
 
 # Upstream packages we vendor (only show upstream-only files from these)
 # Everything else in upstream (controllers, simpleschema, etc.) is intentionally excluded.
-VENDORED_PACKAGES="graph/ cel/ runtime/ metadata/"
+VENDORED_PACKAGES="graph/ cel/ runtime/ metadata/ metrics/"
 
 usage() {
     head -30 "$0" | grep -E '^#' | sed 's/^# \?//'
